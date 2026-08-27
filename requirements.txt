@@ -1,8 +1,8 @@
 # ============================================================
 # 🔥 MASI FAST RESULTS - Backend Dependencies
 # ============================================================
-Python 3.10+ required
-Install: pip install -r requirements.txt
+#Python 3.10+ required
+#Install: pip install -r requirements.txt
 # ============================================================
 
 # ============================================================
