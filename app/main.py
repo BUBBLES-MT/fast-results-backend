@@ -1,3 +1,5 @@
+# app/main.py
+
 from app.api.v1.auth import auth
 from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,18 +21,12 @@ from app.api.v1.primary import subjects as primary_subjects
 from app.api.v1.primary import promote as primary_promote
 from app.api.v1.primary import marks as primary_marks
 from app.api.v1.primary import past_papers as primary_past_papers
-
-# 🔥🔥🔥 ONGEZA HII - PRIMARY AI EXAM! 🔥🔥🔥
 from app.api.v1.primary import ai_exam as primary_ai_exam
 
-# ============================================================
-# 🔥 PARENTS API (MPYA!)
-# ============================================================
+# 🔥 PARENTS API
 from app.api.v1 import parents as parents_router
 
-# ============================================================
-# 🔥 SCHOOL ANNOUNCEMENTS API (MPYA!)
-# ============================================================
+# 🔥 SCHOOL ANNOUNCEMENTS API
 from app.api.v1 import school_announcements as school_announcements_router
 
 from sqlalchemy.orm import Session
@@ -38,51 +34,81 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from typing import Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# 🔥 FASTAPI APP INSTANCE
+# ============================================================
 app = FastAPI(
-    title="School Management System",
+    title="MASI FAST RESULTS API",
     description="Multi-tenant system for Primary and Secondary Schools",
-    version="2.0.0"
+    version="3.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
-# =========================
-# 🔹 CORS Middleware
-# =========================
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://192.168.1.100:3000",
-    "http://192.168.1.101:3000",
-]
+# ============================================================
+# 🔥🔥🔥 CORS MIDDLEWARE - PRO MAX VERSION!
+# ============================================================
+
+# 🔥 Get allowed origins from environment or use defaults
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com"
+).split(",")
+
+# 🔥 Clean origins
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+
+logger.info(f"🔧 CORS Allowed Origins: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-User-Type",
+        "X-School-Id",
+    ],
+    expose_headers=[
+        "Content-Length",
+        "X-Total-Count",
+        "X-Rate-Limit-Remaining",
+    ],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
-# =========================
-# 🔹 STATIC FILES (For uploads)
-# =========================
+# ============================================================
+# 🔥 STATIC FILES (Uploads)
+# ============================================================
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(exist_ok=True)
 
-# 🔥 PRIMARY PAST PAPERS UPLOAD DIRECTORY
+# 🔥 Primary Past Papers
 primary_past_papers_dir = Path("uploads/primary/past_papers")
 primary_past_papers_dir.mkdir(parents=True, exist_ok=True)
 
+# 🔥 Secondary Past Papers
 past_papers_dir = Path("uploads/past_papers")
 past_papers_dir.mkdir(parents=True, exist_ok=True)
 
+# 🔥 Mount static files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# =========================
-# 🔹 Register API Routers
-# =========================
+logger.info("📁 Upload directories created successfully")
+
+# ============================================================
+# 🔥 REGISTER API ROUTERS
+# ============================================================
 
 # ------ GENERAL ROUTERS ------
 app.include_router(students.router, prefix="/api/v1", tags=["Students"])
@@ -91,31 +117,25 @@ app.include_router(schools.router, prefix="/api/v1", tags=["Schools"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(ai_exam.router, prefix="/api/v1/ai-exam", tags=["AI Exam Generator"])
 app.include_router(superadmin.router, prefix="/api/v1/superadmin", tags=["SuperAdmin"])
-app.include_router(classes.router, prefix="/api/v1", tags=["Classes"])  
+app.include_router(classes.router, prefix="/api/v1", tags=["Classes"])
 app.include_router(subjects.router, prefix="/api/v1", tags=["Subjects"])
 app.include_router(marks.router, prefix="/api/v1", tags=["Marks"])
-app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])  
+app.include_router(reports.router, prefix="/api/v1/reports", tags=["Reports"])
 app.include_router(streams.router, prefix="/api/v1", tags=["Streams"])
 app.include_router(academic.router, prefix="/api/v1/academic", tags=["Academic"])
 app.include_router(promote.router, prefix="/api/v1/promote", tags=["Promote"])
 app.include_router(past_papers.router, prefix="/api/v1", tags=["Past Papers"])
 
-# ============================================================
-# 🔥 PARENTS ROUTER (MPYA!)
-# ============================================================
+# ------ PARENTS ROUTER ------
 app.include_router(parents_router.router, prefix="/api/v1", tags=["Parents"])
 
-# ============================================================
-# 🔥 SCHOOL ANNOUNCEMENTS ROUTER (MPYA!)
-# ============================================================
+# ------ SCHOOL ANNOUNCEMENTS ROUTER ------
 app.include_router(school_announcements_router.router, prefix="/api/v1", tags=["School Announcements"])
 
 # ------ SECONDARY ROUTERS ------
 app.include_router(secondary_dashboard.router, prefix="/api/v1/secondary", tags=["Secondary Dashboard"])
 
-# ============================================================
-# 🔥 PRIMARY ROUTERS (ZOTE ZIMEONGEZWA)
-# ============================================================
+# ------ PRIMARY ROUTERS ------
 app.include_router(primary_dashboard.router, prefix="/api/v1", tags=["Primary Dashboard"])
 app.include_router(primary_top_students.router, prefix="/api/v1", tags=["Primary Reports"])
 app.include_router(primary_unassigned_slots.router, prefix="/api/v1", tags=["Primary Academic"])
@@ -127,28 +147,32 @@ app.include_router(primary_subjects.router, prefix="/api/v1", tags=["Primary Sub
 app.include_router(primary_promote.router, prefix="/api/v1", tags=["Primary Promote"])
 app.include_router(primary_marks.router, prefix="/api/v1", tags=["Primary Marks"])
 app.include_router(primary_past_papers.router, prefix="/api/v1", tags=["Primary Past Papers"])
-
-# 🔥🔥🔥 ONGEZA HII - PRIMARY AI EXAM! 🔥🔥🔥
 app.include_router(primary_ai_exam.router, prefix="/api/v1", tags=["Primary AI Exam"])
 
-# =========================
-# 🔹 Root & Health Endpoints
-# =========================
+logger.info("✅ All routers registered successfully")
+
+# ============================================================
+# 🔥 ROOT & HEALTH ENDPOINTS
+# ============================================================
+
 @app.get("/", summary="Root endpoint")
 def root():
     return {
-        "message": "School Management System API",
+        "message": "MASI FAST RESULTS API",
         "status": "running",
-        "version": "2.0.0"
+        "version": "3.0.0",
+        "docs": "/docs",
+        "health": "/health"
     }
 
 @app.get("/health", summary="Health check endpoint")
 def health():
-    return {"status": "healthy"}
+    return {"status": "healthy", "timestamp": __import__("datetime").datetime.now().isoformat()}
 
-# =========================
-# 🔹 TEACHER STUDENTS ENDPOINT (Direct)
-# =========================
+# ============================================================
+# 🔥 TEACHER STUDENTS ENDPOINT
+# ============================================================
+
 @app.get("/api/v1/teacher-my-students")
 def get_teacher_my_students(
     db: Session = Depends(get_db),
@@ -220,9 +244,11 @@ def get_teacher_my_students(
             })
     
     return result
-# =========================
-# 🔹 API LIST ENDPOINT (Helpful for debugging)
-# =========================
+
+# ============================================================
+# 🔥 API LIST ENDPOINT (Debugging)
+# ============================================================
+
 @app.get("/api/v1/routes", summary="List all registered routes")
 def list_routes():
     """List all registered API routes - helpful for debugging"""
@@ -233,4 +259,48 @@ def list_routes():
                 "path": route.path,
                 "methods": list(route.methods) if route.methods else []
             })
-    return {"routes": routes}
+    return {
+        "total_routes": len(routes),
+        "routes": routes
+    }
+
+# ============================================================
+# 🔥 ERROR HANDLERS
+# ============================================================
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"❌ Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal Server Error",
+            "message": str(exc) if os.getenv("DEBUG", "False").lower() == "true" else "Something went wrong",
+            "path": request.url.path
+        }
+    )
+
+# ============================================================
+# 🔥 STARTUP EVENT
+# ============================================================
+
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 MASI FAST RESULTS API starting up...")
+    logger.info(f"📡 Environment: {os.getenv('APP_ENVIRONMENT', 'development')}")
+    logger.info(f"🔧 CORS Origins: {ALLOWED_ORIGINS}")
+    logger.info(f"🗄️  Database: {'Connected' if os.getenv('DATABASE_URL') else 'Not configured'}")
+    logger.info("✅ API ready to serve requests!")
+
+# ============================================================
+# 🔥 SHUTDOWN EVENT
+# ============================================================
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("🛑 MASI FAST RESULTS API shutting down...")
+
+logger.info("✅ app.main.py loaded successfully")
