@@ -1,0 +1,12 @@
+{
+  "name": "backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "uvicorn app.main:app --reload"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
