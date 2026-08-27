@@ -1,9 +1,9 @@
 # app/core/config.py
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic_settings import BaseSettings
-from pydantic import Field, EmailStr, field_validator
+from pydantic import Field, field_validator
 from functools import lru_cache
 from dotenv import load_dotenv
 
@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# 🔥 CONFIGURATION CLASS - PRO MAX VERSION (FIXED)
+# 🔥 CONFIGURATION CLASS - PRO MAX VERSION 3.0
 # ============================================================
 
 class Settings(BaseSettings):
@@ -23,40 +23,53 @@ class Settings(BaseSettings):
     # ============================================================
     # 🔥 APP SETTINGS
     # ============================================================
-    APP_NAME: str = "MASI FAST RESULTS API"
-    APP_VERSION: str = "1.0.0"
-    APP_DESCRIPTION: str = "School Management System API"
+    APP_NAME: str = Field(
+        default="MASI FAST RESULTS API",
+        description="Application name"
+    )
+    APP_VERSION: str = Field(
+        default="1.0.0",
+        description="Application version"
+    )
+    APP_DESCRIPTION: str = Field(
+        default="School Management System API",
+        description="Application description"
+    )
     APP_ENVIRONMENT: str = Field(
         default="development",
         description="Environment: development, testing, production"
     )
-    DEBUG: bool = Field(default=True, description="Debug mode")
+    DEBUG: bool = Field(
+        default=True,
+        description="Debug mode"
+    )
     
     # ============================================================
     # 🔥 SERVER SETTINGS
     # ============================================================
-    HOST: str = Field(default="0.0.0.0", description="Server host")
-    PORT: int = Field(default=8000, description="Server port")
+    HOST: str = Field(
+        default="0.0.0.0",
+        description="Server host"
+    )
+    PORT: int = Field(
+        default=8000,
+        description="Server port"
+    )
     BACKEND_URL: str = Field(
         default="http://localhost:8000",
-        description="Backend URL for CORS"
+        description="Backend URL"
     )
     FRONTEND_URL: str = Field(
         default="http://localhost:3000",
-        description="Frontend URL for CORS"
+        description="Frontend URL"
     )
     
     # ============================================================
-    # 🔥 CORS SETTINGS
+    # 🔥 CORS SETTINGS - FIXED!
     # ============================================================
-    ALLOWED_ORIGINS: List[str] = Field(
-        default=[
-            "http://localhost:3000",
-            "http://localhost:8000",
-            "https://*.vercel.app",
-            "https://*.onrender.com",
-        ],
-        description="Allowed CORS origins"
+    ALLOWED_ORIGINS: str = Field(
+        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com",
+        description="Allowed CORS origins (comma separated)"
     )
     
     # ============================================================
@@ -66,10 +79,22 @@ class Settings(BaseSettings):
         default="postgresql://user:password@localhost:5432/dbname",
         description="PostgreSQL database URL"
     )
-    DATABASE_POOL_SIZE: int = Field(default=10, description="Database connection pool size")
-    DATABASE_MAX_OVERFLOW: int = Field(default=20, description="Max overflow connections")
-    DATABASE_POOL_TIMEOUT: int = Field(default=30, description="Connection pool timeout")
-    DATABASE_ECHO: bool = Field(default=False, description="Echo SQL queries")
+    DATABASE_POOL_SIZE: int = Field(
+        default=10,
+        description="Database connection pool size"
+    )
+    DATABASE_MAX_OVERFLOW: int = Field(
+        default=20,
+        description="Max overflow connections"
+    )
+    DATABASE_POOL_TIMEOUT: int = Field(
+        default=30,
+        description="Connection pool timeout"
+    )
+    DATABASE_ECHO: bool = Field(
+        default=False,
+        description="Echo SQL queries"
+    )
     
     # ============================================================
     # 🔥 AUTHENTICATION SETTINGS
@@ -78,9 +103,12 @@ class Settings(BaseSettings):
         default="your-super-secret-key-change-this-in-production",
         description="JWT secret key - MUST CHANGE IN PRODUCTION!"
     )
-    ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
+    ALGORITHM: str = Field(
+        default="HS256",
+        description="JWT algorithm"
+    )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-        default=1440,  # 24 hours
+        default=1440,
         description="Access token expiration in minutes"
     )
     REFRESH_TOKEN_EXPIRE_DAYS: int = Field(
@@ -91,60 +119,174 @@ class Settings(BaseSettings):
     # ============================================================
     # 🔥 SECURITY SETTINGS
     # ============================================================
-    BCRYPT_ROUNDS: int = Field(default=12, description="Bcrypt hashing rounds")
-    PASSWORD_MIN_LENGTH: int = Field(default=6, description="Minimum password length")
-    MAX_LOGIN_ATTEMPTS: int = Field(default=5, description="Max login attempts before lockout")
-    LOCKOUT_DURATION_MINUTES: int = Field(default=30, description="Lockout duration in minutes")
+    BCRYPT_ROUNDS: int = Field(
+        default=12,
+        description="Bcrypt hashing rounds"
+    )
+    PASSWORD_MIN_LENGTH: int = Field(
+        default=6,
+        description="Minimum password length"
+    )
+    MAX_LOGIN_ATTEMPTS: int = Field(
+        default=5,
+        description="Max login attempts before lockout"
+    )
+    LOCKOUT_DURATION_MINUTES: int = Field(
+        default=30,
+        description="Lockout duration in minutes"
+    )
     
     # ============================================================
     # 🔥 EMAIL SETTINGS (Optional)
     # ============================================================
-    SMTP_HOST: Optional[str] = Field(default=None, description="SMTP server host")
-    SMTP_PORT: Optional[int] = Field(default=587, description="SMTP server port")
-    SMTP_USER: Optional[str] = Field(default=None, description="SMTP username")
-    SMTP_PASSWORD: Optional[str] = Field(default=None, description="SMTP password")
-    SMTP_FROM_EMAIL: Optional[str] = Field(default=None, description="From email address")
-    SMTP_USE_TLS: bool = Field(default=True, description="Use TLS for SMTP")
+    SMTP_HOST: Optional[str] = Field(
+        default=None,
+        description="SMTP server host"
+    )
+    SMTP_PORT: Optional[int] = Field(
+        default=587,
+        description="SMTP server port"
+    )
+    SMTP_USER: Optional[str] = Field(
+        default=None,
+        description="SMTP username"
+    )
+    SMTP_PASSWORD: Optional[str] = Field(
+        default=None,
+        description="SMTP password"
+    )
+    SMTP_FROM_EMAIL: Optional[str] = Field(
+        default=None,
+        description="From email address"
+    )
+    SMTP_USE_TLS: bool = Field(
+        default=True,
+        description="Use TLS for SMTP"
+    )
     
     # ============================================================
     # 🔥 OPENAI SETTINGS (Optional)
     # ============================================================
-    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
-    OPENAI_MODEL: str = Field(default="gpt-3.5-turbo", description="OpenAI model to use")
-    OPENAI_MAX_TOKENS: int = Field(default=1000, description="Max tokens for OpenAI responses")
-    OPENAI_TEMPERATURE: float = Field(default=0.7, description="OpenAI temperature")
+    OPENAI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="OpenAI API key"
+    )
+    OPENAI_MODEL: str = Field(
+        default="gpt-3.5-turbo",
+        description="OpenAI model to use"
+    )
+    OPENAI_MAX_TOKENS: int = Field(
+        default=1000,
+        description="Max tokens for OpenAI responses"
+    )
+    OPENAI_TEMPERATURE: float = Field(
+        default=0.7,
+        description="OpenAI temperature"
+    )
     
     # ============================================================
     # 🔥 REDIS SETTINGS (Optional - for caching)
     # ============================================================
-    REDIS_URL: Optional[str] = Field(default=None, description="Redis URL for caching")
-    REDIS_CACHE_TTL: int = Field(default=300, description="Cache TTL in seconds")
+    REDIS_URL: Optional[str] = Field(
+        default=None,
+        description="Redis URL for caching"
+    )
+    REDIS_CACHE_TTL: int = Field(
+        default=300,
+        description="Cache TTL in seconds"
+    )
     
     # ============================================================
     # 🔥 FILE UPLOAD SETTINGS
     # ============================================================
-    MAX_UPLOAD_SIZE: int = Field(default=5 * 1024 * 1024, description="Max upload size in bytes (5MB)")
-    ALLOWED_EXTENSIONS: List[str] = Field(
-        default=[".jpg", ".jpeg", ".png", ".gif", ".pdf", ".doc", ".docx"],
-        description="Allowed file extensions"
+    MAX_UPLOAD_SIZE: int = Field(
+        default=5242880,
+        description="Max upload size in bytes (5MB)"
     )
-    UPLOAD_DIR: str = Field(default="uploads", description="Upload directory")
+    ALLOWED_EXTENSIONS: str = Field(
+        default=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx",
+        description="Allowed file extensions (comma separated)"
+    )
+    UPLOAD_DIR: str = Field(
+        default="uploads",
+        description="Upload directory"
+    )
     
     # ============================================================
     # 🔥 LOGGING SETTINGS
     # ============================================================
-    LOG_LEVEL: str = Field(default="INFO", description="Log level: DEBUG, INFO, WARNING, ERROR")
-    LOG_FILE: Optional[str] = Field(default=None, description="Log file path")
+    LOG_LEVEL: str = Field(
+        default="INFO",
+        description="Log level: DEBUG, INFO, WARNING, ERROR"
+    )
+    LOG_FILE: Optional[str] = Field(
+        default=None,
+        description="Log file path"
+    )
     
     # ============================================================
-    # 🔥 VALIDATORS - FIXED! (Using field_validator for Pydantic v2)
+    # 🔥 PAYMENT SETTINGS (Optional)
+    # ============================================================
+    CLICKPESA_API_KEY: Optional[str] = Field(
+        default=None,
+        description="ClickPesa API Key"
+    )
+    CLICKPESA_CLIENT_ID: Optional[str] = Field(
+        default=None,
+        description="ClickPesa Client ID"
+    )
+    CLICKPESA_INITIATE_URL: Optional[str] = Field(
+        default=None,
+        description="ClickPesa Initiate URL"
+    )
+    CLICKPESA_PAYMENT_STATUS_URL: Optional[str] = Field(
+        default=None,
+        description="ClickPesa Payment Status URL"
+    )
+    CLICKPESA_PREVIEW_URL: Optional[str] = Field(
+        default=None,
+        description="ClickPesa Preview URL"
+    )
+    
+    # ============================================================
+    # 🔥 SMS SETTINGS (Optional)
+    # ============================================================
+    AT_API_KEY: Optional[str] = Field(
+        default=None,
+        description="AfricasTalking API Key"
+    )
+    AT_USERNAME: Optional[str] = Field(
+        default=None,
+        description="AfricasTalking Username"
+    )
+    SMS_SANDBOX: bool = Field(
+        default=False,
+        description="SMS Sandbox Mode"
+    )
+    
+    # ============================================================
+    # 🔥 SUPABASE SETTINGS (Optional)
+    # ============================================================
+    SUPABASE_URL: Optional[str] = Field(
+        default=None,
+        description="Supabase URL"
+    )
+    SUPABASE_KEY: Optional[str] = Field(
+        default=None,
+        description="Supabase API Key"
+    )
+    SUPABASE_BUCKET: str = Field(
+        default="uploads",
+        description="Supabase Storage Bucket"
+    )
+    
+    # ============================================================
+    # 🔥 VALIDATORS
     # ============================================================
     @field_validator("SECRET_KEY")
     @classmethod
-    def validate_secret_key(cls, v: str, info) -> str:
+    def validate_secret_key(cls, v: str) -> str:
         """Ensure secret key is not default in production"""
-        # Get APP_ENVIRONMENT from values
-        # Since we can't access other fields directly, we check context
         env = os.getenv("APP_ENVIRONMENT", "development")
         if env == "production" and v == "your-super-secret-key-change-this-in-production":
             raise ValueError("SECRET_KEY must be changed in production!")
@@ -155,15 +297,18 @@ class Settings(BaseSettings):
     def validate_database_url(cls, v: str) -> str:
         """Ensure database URL is set"""
         if not v or v == "postgresql://user:password@localhost:5432/dbname":
-            raise ValueError("DATABASE_URL must be set!")
+            # Don't raise error in development (use default SQLite or similar)
+            env = os.getenv("APP_ENVIRONMENT", "development")
+            if env == "production":
+                raise ValueError("DATABASE_URL must be set in production!")
         return v
     
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
-    def parse_allowed_origins(cls, v):
-        """Parse allowed origins from string or list"""
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
+    def parse_allowed_origins(cls, v: Union[str, List[str]]) -> str:
+        """Parse allowed origins - always return string"""
+        if isinstance(v, list):
+            return ",".join(v)
         return v
     
     # ============================================================
@@ -186,10 +331,15 @@ class Settings(BaseSettings):
     
     @property
     def cors_origins(self) -> List[str]:
-        """Get CORS origins with environment-specific overrides"""
+        """Get CORS origins as list"""
         if self.is_development:
             return ["http://localhost:3000", "http://localhost:8000"]
-        return self.ALLOWED_ORIGINS
+        return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+    
+    @property
+    def allowed_extensions_list(self) -> List[str]:
+        """Get allowed extensions as list"""
+        return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()]
     
     # ============================================================
     # 🔥 PYDANTIC V2 CONFIG
@@ -208,10 +358,7 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    Get cached settings instance.
-    Use this function to access settings throughout the application.
-    """
+    """Get cached settings instance."""
     return Settings()
 
 
