@@ -1,0 +1,53 @@
+# render.yaml
+
+services:
+  - type: web
+    name: fast-results-backend
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: DATABASE_URL
+      - key: SECRET_KEY
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: SECRET_KEY
+      - key: ALGORITHM
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: ALGORITHM
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: ACCESS_TOKEN_EXPIRE_MINUTES
+      - key: APP_ENVIRONMENT
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: APP_ENVIRONMENT
+      - key: BACKEND_URL
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: BACKEND_URL
+      - key: FRONTEND_URL
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: FRONTEND_URL
+      - key: DEBUG
+        fromService:
+          type: env
+          name: fast-results-backend
+          key: DEBUG
