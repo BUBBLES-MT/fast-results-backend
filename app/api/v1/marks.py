@@ -13,6 +13,14 @@ from app.models.teacher import Teacher
 from app.models.school_class import SchoolClass
 from app.models.school import School
 from app.models.superadmin import SuperAdmin
+from app.models.teacher import Teacher
+from app.models.teacher_subject import TeacherSubject
+from app.models.student import Student
+from app.models.subject import Subject
+from app.models.school_class import SchoolClass
+from app.models.stream import Stream
+from app.models.superadmin import SuperAdmin
+from sqlalchemy import extract, or_
 from pydantic import BaseModel
 import pandas as pd 
 from reportlab.lib.pagesizes import A4, landscape
@@ -287,27 +295,6 @@ def get_all_marks(
     return result
 
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @router.get("/class/{class_id}/export-excel")
 def export_class_results_excel(
     class_id: int,
@@ -1199,20 +1186,44 @@ def get_class_parent_reports_data(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ============================================================
-# OPTIMIZED MY STUDENTS ENDPOINT - WITH ROLL NUMBER
+# OPTIMIZED MY STUDENTS ENDPOINT - FULLY FIXED! VERSION 3
 # ============================================================
 @router.get("/marks/my-students")
 def get_my_students_marks(
-    year: Optional[int] = Query(None, description="Year to filter (2024, 2025, 2026). Leave empty for all years"),
+    year: Optional[int] = Query(None, description="Year to filter"),
+    teacher_id: Optional[int] = Query(None, description="Filter by teacher ID"),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Get marks for students based on user role
-    - SuperAdmin: All marks in system
-    - Headmaster/Headmistress/Second Master/Second Mistress/Academic: All marks in their school
-    - Teacher: Only marks for students they teach (based on TeacherSubject)
-    """
     from app.models.teacher import Teacher
     from app.models.teacher_subject import TeacherSubject
     from app.models.student import Student
@@ -1221,53 +1232,63 @@ def get_my_students_marks(
     from app.models.stream import Stream
     from app.models.superadmin import SuperAdmin
     from sqlalchemy import extract, or_
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     def apply_year_filter(query, year):
         if year:
             return query.filter(extract('year', Mark.created_at) == year)
         return query
     
-    # ============================================================
-    # CASE 1: SuperAdmin - Can see ALL marks
-    # ============================================================
+    # CASE 1: SuperAdmin
     if isinstance(current_user, SuperAdmin):
         query = db.query(Mark)
         query = apply_year_filter(query, year)
+        if teacher_id:
+            query = query.filter(Mark.teacher_id == teacher_id)
         marks = query.all()
         return {
             "marks": [{
-                "id": m.id, 
-                "student_id": m.student_id, 
-                "subject_id": m.subject_id, 
-                "score": m.score, 
-                "exam_type": m.exam_type, 
+                "id": m.id,
+                "student_id": m.student_id,
+                "subject_id": m.subject_id,
+                "score": m.score,
+                "exam_type": m.exam_type,
+                "teacher_id": m.teacher_id,
                 "created_at": m.created_at.isoformat() if m.created_at else None
             } for m in marks]
         }
     
-    # ============================================================
     # CASE 2: Teacher or Academic Staff
-    # ============================================================
     if isinstance(current_user, Teacher):
-        # Handle role properly - could be enum or string
         user_role = getattr(current_user, 'role', None)
         if hasattr(user_role, 'value'):
             user_role_value = user_role.value
         else:
             user_role_value = user_role if isinstance(user_role, str) else None
         
-        # Get school_id
+        logger.info(f"🔍 Current user role: {user_role_value}")
+        
         school_id = getattr(current_user, 'school_id', None)
         if not school_id and hasattr(current_user, 'school') and current_user.school:
             school_id = current_user.school.id
         
-        # ========================================================
-        # CASE 2.1: Admin roles - can see ALL marks in their school
-        # ========================================================
-        admin_roles = ["Academic", "Headmaster", "Headmistress", "Second Master", "Second Mistress"]
+        logger.info(f"🏫 School ID: {school_id}")
         
-        if user_role_value in admin_roles:
+        admin_roles = ["Academic", "Headmaster", "Headmistress", "Second Master", "Second Mistress"]
+        is_admin = user_role_value and user_role_value in admin_roles
+        
+        logger.info(f"🔍 Is admin? {is_admin}")
+        
+        # ========================================================
+        # CASE 2.1: Admin roles - All marks in school
+        # ========================================================
+        if is_admin:
             if school_id:
+                logger.info(f"👑 Admin user: {user_role_value}, School ID: {school_id}")
+                logger.info(f"🔍 Filtering by teacher_id: {teacher_id}")
+                
                 query = db.query(
                     Mark.id,
                     Mark.student_id,
@@ -1298,8 +1319,16 @@ def get_my_students_marks(
                     Student.school_id == school_id
                 )
                 
+                if teacher_id:
+                    query = query.filter(Mark.teacher_id == teacher_id)
+                    logger.info(f"✅ Filtering by teacher_id: {teacher_id}")
+                else:
+                    logger.info(f"✅ No teacher filter - returning ALL marks in school")
+                
                 query = apply_year_filter(query, year)
                 result = query.all()
+                
+                logger.info(f"📊 Found {len(result)} marks for admin")
                 
                 marks = []
                 for row in result:
@@ -1317,26 +1346,33 @@ def get_my_students_marks(
                         "exam_type": row.exam_type,
                         "score": row.score,
                         "teacher_id": row.teacher_id,
-                        "teacher_name": row.teacher_name,
+                        "teacher_name": row.teacher_name or "Unknown",
                         "created_at": row.created_at.isoformat() if row.created_at else None
                     })
+                
                 return {"marks": marks}
             else:
                 return {"marks": [], "error": "School not found for admin user"}
         
         # ========================================================
-        # CASE 2.2: Regular Teacher - only see students they teach
+        # 🔥🔥🔥 CASE 2.2: Regular Teacher - FIXED! 🔥🔥🔥
         # ========================================================
         else:
+            # 🔥 KAMA Kuna teacher_id iliyopitishwa, tumia hiyo!
+            effective_teacher_id = teacher_id if teacher_id else current_user.id
+            
+            logger.info(f"👨‍🏫 Regular teacher: {current_user.id}")
+            logger.info(f"🔍 Effective teacher ID: {effective_teacher_id}")
+            
             # Get all classes taught by this teacher
             teacher_assignments = db.query(TeacherSubject).filter(
-                TeacherSubject.teacher_id == current_user.id
+                TeacherSubject.teacher_id == effective_teacher_id
             ).all()
             
             if not teacher_assignments:
                 return {"marks": [], "message": "No classes assigned to this teacher"}
             
-            # Build conditions for class+stream combinations
+            # Build conditions
             class_stream_conditions = []
             subject_ids = []
             
@@ -1347,7 +1383,6 @@ def get_my_students_marks(
                 )
                 subject_ids.append(assignment.subject_id)
             
-            # Build query with proper filters including roll_number
             query = db.query(
                 Mark.id,
                 Mark.student_id,
@@ -1362,22 +1397,22 @@ def get_my_students_marks(
                 SchoolClass.name.label("class_name"),
                 Student.stream_id,
                 Stream.name.label("stream_name"),
-                Subject.name.label("subject_name")
+                Subject.name.label("subject_name"),
+                Teacher.name.label("teacher_name")  # ✅ JINA LA MWALIMU!
             ).join(
                 Student, Mark.student_id == Student.id
             ).join(
                 Subject, Mark.subject_id == Subject.id
             ).join(
+                Teacher, Mark.teacher_id == Teacher.id  # ✅ JOIN WITH TEACHER!
+            ).join(
                 SchoolClass, Student.class_id == SchoolClass.id
             ).join(
                 Stream, Student.stream_id == Stream.id
             ).filter(
-                # Student must be in a class taught by this teacher
                 or_(*class_stream_conditions),
-                # Mark subject must be taught by this teacher
                 Mark.subject_id.in_(subject_ids),
-                # Mark must be entered by this teacher (security)
-                Mark.teacher_id == current_user.id
+                Mark.teacher_id == effective_teacher_id  # 🔥 TUMIA effective_teacher_id!
             )
             
             query = apply_year_filter(query, year)
@@ -1399,15 +1434,30 @@ def get_my_students_marks(
                     "exam_type": row.exam_type,
                     "score": row.score,
                     "teacher_id": row.teacher_id,
+                    "teacher_name": row.teacher_name or "Unknown",
                     "created_at": row.created_at.isoformat() if row.created_at else None
                 })
             
             return {"marks": marks}
     
-    # ============================================================
-    # CASE 3: Other user types (e.g., Parent, Student)
-    # ============================================================
+    # CASE 3: Other user types
     return {"marks": [], "error": "Unauthorized role"}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 '''

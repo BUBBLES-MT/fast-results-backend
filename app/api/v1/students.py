@@ -294,9 +294,9 @@ def get_student(
     }
 
 # ============================================================
-# ENDPOINT 3: GET ALL STUDENTS (IMPROVED - Case-insensitive)
+# ENDPOINT 3: GET ALL STUDENTS - FIXED!
 # ============================================================
-@router.get("/students", response_model=List[StudentResponse])
+@router.get("/students")
 def get_all_students(
     school_id: Optional[int] = Query(None, description="Filter by school"),
     class_id: Optional[int] = Query(None, description="Filter by class"),
@@ -304,20 +304,57 @@ def get_all_students(
     current_user = Depends(get_current_user)
 ):
     from app.models.superadmin import SuperAdmin
+    from app.models.school_class import SchoolClass
+    from app.models.stream import Stream
     
     user_role = _get_user_role(current_user)
     
     # SUPERADMIN - can see all
     if isinstance(current_user, SuperAdmin):
-        query = db.query(Student)
+        query = db.query(
+            Student.id,
+            Student.name,
+            Student.sex,
+            Student.roll_number,
+            Student.school_id,
+            Student.class_id,
+            Student.stream_id,
+            Student.father_name,
+            Student.father_phone,
+            Student.address,
+            Student.health_info,
+            Student.enrollment_date,
+            SchoolClass.name.label("class_name"),
+            Stream.name.label("stream_name")
+        ).join(
+            SchoolClass, Student.class_id == SchoolClass.id, isouter=True
+        ).join(
+            Stream, Student.stream_id == Stream.id, isouter=True
+        )
         if school_id:
             query = query.filter(Student.school_id == school_id)
         if class_id:
             query = query.filter(Student.class_id == class_id)
         students = query.all()
-        return students
+        
+        return [{
+            "id": s.id,
+            "name": s.name,
+            "sex": s.sex,
+            "roll_number": s.roll_number,
+            "school_id": s.school_id,
+            "class_id": s.class_id,
+            "class_name": s.class_name or "",
+            "stream_id": s.stream_id,
+            "stream_name": s.stream_name or "",
+            "father_name": s.father_name,
+            "father_phone": s.father_phone,
+            "address": s.address,
+            "health_info": s.health_info,
+            "enrollment_date": s.enrollment_date
+        } for s in students]
     
-    # 🔥 ADMIN ROLES (Case-insensitive, supports both English and Swahili)
+    # 🔥 ADMIN ROLES
     admin_roles = [
         "Headmaster", "Headmistress", "Second Master", "Second Mistress", "Academic",
         "Mwalimu Mkuu", "Mwalimu Mkuu Msaidizi", "Mtaaluma"
@@ -325,11 +362,47 @@ def get_all_students(
     
     if user_role in admin_roles:
         if hasattr(current_user, 'school_id') and current_user.school_id:
-            query = db.query(Student).filter(Student.school_id == current_user.school_id)
+            query = db.query(
+                Student.id,
+                Student.name,
+                Student.sex,
+                Student.roll_number,
+                Student.school_id,
+                Student.class_id,
+                Student.stream_id,
+                Student.father_name,
+                Student.father_phone,
+                Student.address,
+                Student.health_info,
+                Student.enrollment_date,
+                SchoolClass.name.label("class_name"),
+                Stream.name.label("stream_name")
+            ).join(
+                SchoolClass, Student.class_id == SchoolClass.id, isouter=True
+            ).join(
+                Stream, Student.stream_id == Stream.id, isouter=True
+            ).filter(Student.school_id == current_user.school_id)
+            
             if class_id:
                 query = query.filter(Student.class_id == class_id)
             students = query.all()
-            return students
+            
+            return [{
+                "id": s.id,
+                "name": s.name,
+                "sex": s.sex,
+                "roll_number": s.roll_number,
+                "school_id": s.school_id,
+                "class_id": s.class_id,
+                "class_name": s.class_name or "",
+                "stream_id": s.stream_id,
+                "stream_name": s.stream_name or "",
+                "father_name": s.father_name,
+                "father_phone": s.father_phone,
+                "address": s.address,
+                "health_info": s.health_info,
+                "enrollment_date": s.enrollment_date
+            } for s in students]
     
     # TEACHER - should use my-students endpoint
     if user_role == "Teacher" or user_role == "Mwalimu":
@@ -339,6 +412,8 @@ def get_all_students(
         )
     
     raise HTTPException(status_code=403, detail=f"Not authorized. Your role: {user_role}")
+
+
 
 # ============================================================
 # ENDPOINT 4: CREATE STUDENT

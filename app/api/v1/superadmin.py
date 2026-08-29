@@ -530,6 +530,7 @@ def get_all_schools(
     return schools
 
 
+
 @router.post("/schools", response_model=SchoolResponse)
 def create_school(
     school_data: SchoolCreate,
@@ -586,6 +587,102 @@ def create_school(
     return new_school
 
 
+
+
+
+# ============================================================
+# 🔥🔥🔥 SUPERADMIN UPDATE SCHOOL 🔥🔥🔥
+# ============================================================
+
+class SchoolUpdate(BaseModel):
+    name: Optional[str] = None
+    school_type: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    region: Optional[str] = None
+    district: Optional[str] = None
+
+@router.put("/schools/{school_id}")
+def update_school(
+    school_id: int,
+    school_data: SchoolUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Update school information
+    """
+    # Check superadmin
+    if not is_superadmin(current_user):
+        logger.warning(f"⚠️ Unauthorized update attempt on school {school_id} by user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Superadmin privileges required."
+        )
+    
+    # Find school
+    school = db.query(School).filter(School.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="School not found")
+    
+    # Update fields
+    update_data = school_data.dict(exclude_unset=True)
+    
+    # Validate school_type if provided
+    if "school_type" in update_data and update_data["school_type"]:
+        valid_types = ["PRIMARY", "SECONDARY", "ADVANCED"]
+        if update_data["school_type"].upper() not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid school_type. Must be one of: {', '.join(valid_types)}"
+            )
+        update_data["school_type"] = update_data["school_type"].upper()
+        # Also update school_level
+        if update_data["school_type"].upper() == "PRIMARY":
+            update_data["school_level"] = "primary"
+        elif update_data["school_type"].upper() == "SECONDARY":
+            update_data["school_level"] = "secondary"
+        elif update_data["school_type"].upper() == "ADVANCED":
+            update_data["school_level"] = "advanced"
+    
+    # Apply updates
+    for key, value in update_data.items():
+        if value is not None:
+            setattr(school, key, value)
+    
+    db.commit()
+    db.refresh(school)
+    
+    logger.info(f"✅ Superadmin {current_user.name} updated school: {school.name} (ID: {school.id})")
+    
+    return {
+        "message": f"School '{school.name}' updated successfully",
+        "school": {
+            "id": school.id,
+            "name": school.name,
+            "school_type": school.school_type,
+            "school_level": school.school_level,
+            "email": school.email,
+            "phone": school.phone,
+            "address": school.address,
+            "region": school.region,
+            "district": school.district,
+            "is_active": school.is_active,
+            "status": school.status,
+            "subscription_plan": school.subscription_plan,
+            "subscription_expires_at": school.subscription_expires_at,
+            "is_locked_by_superadmin": school.is_locked_by_superadmin,
+            "created_at": school.created_at,
+            "updated_at": getattr(school, 'updated_at', None)
+        }
+    }
+
+
+
+
+
+
 @router.get("/schools/{school_id}", response_model=SchoolResponse)
 def get_school(
     school_id: int,
@@ -604,6 +701,259 @@ def get_school(
 
 
 
+# ============================================================
+# 🔥🔥🔥 SUPERADMIN GET SCHOOL STATUS - FULLY FIXED! 🔥🔥🔥
+# ============================================================
+
+@router.get("/schools/{school_id}/status")
+def get_school_status(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Get detailed school status.
+    """
+    from app.models.student import Student
+    from app.models.teacher import Teacher
+    from app.models.payment_transaction import PaymentTransaction
+    from app.models.superadmin import SuperAdmin
+    from sqlalchemy import desc
+    
+    # ============================================================
+    # 🔥🔥🔥 1. CHECK SUPERADMIN - DIRECT CHECK! 🔥🔥🔥
+    # ============================================================
+    # Hii ndio njia RAHISI ZAIDI na inayofanya kazi 100%!
+    is_superadmin_user = False
+    user_id = getattr(current_user, 'id', None)
+    user_class = current_user.__class__.__name__
+    user_username = getattr(current_user, 'username', '')
+    user_role = getattr(current_user, 'role', '')
+    user_type = getattr(current_user, 'user_type', '')
+    
+    # 🔥 LOG USER INFO
+    logger.info("=" * 60)
+    logger.info("🔍 Checking SuperAdmin status...")
+    logger.info(f"   User ID: {user_id}")
+    logger.info(f"   User Class: {user_class}")
+    logger.info(f"   Username: {user_username}")
+    logger.info(f"   Role: {user_role}")
+    logger.info(f"   User Type: {user_type}")
+    
+    # ✅ Check 1: Direct class check (HII NDIO RAHISI!)
+    if isinstance(current_user, SuperAdmin):
+        is_superadmin_user = True
+        logger.info("✅ SuperAdmin detected by isinstance(SuperAdmin)")
+    
+    # ✅ Check 2: Check ID (SuperAdmin default is 1)
+    elif user_id == 1:
+        is_superadmin_user = True
+        logger.info("✅ SuperAdmin detected by ID=1")
+    
+    # ✅ Check 3: Check is_superadmin attribute
+    elif hasattr(current_user, 'is_superadmin') and current_user.is_superadmin:
+        is_superadmin_user = True
+        logger.info("✅ SuperAdmin detected by is_superadmin attribute")
+    
+    # ✅ Check 4: Check role
+    elif hasattr(current_user, 'role'):
+        role_val = current_user.role
+        if hasattr(role_val, 'value'):
+            role_val = role_val.value
+        if str(role_val).lower() in ['superadmin', 'super_admin']:
+            is_superadmin_user = True
+            logger.info(f"✅ SuperAdmin detected by role: {role_val}")
+    
+    # ✅ Check 5: Check user_type
+    elif hasattr(current_user, 'user_type'):
+        type_val = current_user.user_type
+        if hasattr(type_val, 'value'):
+            type_val = type_val.value
+        if str(type_val).lower() in ['superadmin', 'super_admin']:
+            is_superadmin_user = True
+            logger.info(f"✅ SuperAdmin detected by user_type: {type_val}")
+    
+    # ✅ Check 6: Check username
+    elif user_username.lower() in ['superadmin', 'admin', 'matandala']:
+        is_superadmin_user = True
+        logger.info(f"✅ SuperAdmin detected by username: {user_username}")
+    
+    # 🔥 LOG RESULT
+    if is_superadmin_user:
+        logger.info("✅ RESULT: User IS SuperAdmin")
+    else:
+        logger.warning("❌ RESULT: User IS NOT SuperAdmin")
+    
+    logger.info("=" * 60)
+    
+    # If not superadmin, return 403
+    if not is_superadmin_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superadmin can view this information"
+        )
+    
+    # ============================================================
+    # 2. FIND SCHOOL
+    # ============================================================
+    school = db.query(School).filter(School.id == school_id).first()
+    if not school:
+        logger.warning(f"⚠️ School {school_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"School with ID {school_id} not found"
+        )
+    
+    # ============================================================
+    # 3. CALCULATE SUBSCRIPTION STATUS
+    # ============================================================
+    now = get_tz_now()
+    days_left = 0
+    days_overdue = 0
+    is_expired = True
+    expiry_date_formatted = "No expiry date set"
+    
+    if school.subscription_expires_at:
+        expires = school.subscription_expires_at
+        if expires.tzinfo is None:
+            expires = TZ.localize(expires)
+        
+        expiry_date_formatted = expires.strftime("%B %d, %Y")
+        
+        if expires > now:
+            days_left = (expires - now).days
+            is_expired = False
+        else:
+            days_overdue = (now - expires).days
+            is_expired = True
+    
+    # ============================================================
+    # 4. GET STATISTICS
+    # ============================================================
+    total_teachers = db.query(Teacher).filter(Teacher.school_id == school_id).count()
+    total_students = db.query(Student).filter(Student.school_id == school_id).count()
+    
+    active_teachers = db.query(Teacher).filter(
+        Teacher.school_id == school_id, 
+        Teacher.is_active == True
+    ).count()
+    
+    active_students = db.query(Student).filter(
+        Student.school_id == school_id, 
+        Student.is_active == True
+    ).count()
+    
+    # ============================================================
+    # 5. GET RECENT PAYMENT
+    # ============================================================
+    recent_payment = db.query(PaymentTransaction).filter(
+        PaymentTransaction.school_id == school_id,
+        PaymentTransaction.status == "success"
+    ).order_by(desc(PaymentTransaction.created_at)).first()
+    
+    # ============================================================
+    # 6. DETERMINE CAN_LOGIN
+    # ============================================================
+    can_login = school.is_active and not is_expired and not school.is_locked_by_superadmin
+    
+    # ============================================================
+    # 7. STATUS LABEL
+    # ============================================================
+    if school.is_locked_by_superadmin:
+        status_label = "🔒 Locked"
+        status_color = "red"
+        status_type = "locked"
+        status_message = f"🔒 {school.name} is LOCKED by superadmin"
+    elif is_expired:
+        status_label = f"⛔ Expired ({days_overdue} days overdue)"
+        status_color = "red"
+        status_type = "expired"
+        status_message = f"⛔ {school.name}'s subscription expired {days_overdue} days ago"
+    elif not school.is_active:
+        status_label = "⏸️ Inactive"
+        status_color = "yellow"
+        status_type = "inactive"
+        status_message = f"⏸️ {school.name} is INACTIVE"
+    elif days_left <= 7 and days_left > 0:
+        status_label = f"⚠️ Expiring soon ({days_left} days)"
+        status_color = "yellow"
+        status_type = "expiring_soon"
+        status_message = f"⚠️ {school.name}'s subscription expires in {days_left} days"
+    else:
+        status_label = f"✅ Active ({days_left} days left)"
+        status_color = "green"
+        status_type = "active"
+        status_message = f"✅ {school.name} is ACTIVE with {days_left} days remaining"
+    
+    # ============================================================
+    # 8. LOG AND RETURN
+    # ============================================================
+    logger.info("=" * 60)
+    logger.info(f"📊 School {school_id} ({school.name}) status checked")
+    logger.info(f"   👤 Checked by: {current_user.name}")
+    logger.info(f"   📌 Status: {status_label}")
+    logger.info(f"   📅 Expiry: {expiry_date_formatted}")
+    logger.info(f"   👨‍🏫 Teachers: {total_teachers} ({active_teachers} active)")
+    logger.info(f"   👨‍🎓 Students: {total_students} ({active_students} active)")
+    logger.info(f"   🔓 Can login: {can_login}")
+    logger.info("=" * 60)
+    
+    return {
+        "success": True,
+        "school": {
+            "id": school.id,
+            "name": school.name,
+            "school_level": school.school_level or "N/A",
+            "school_type": school.school_type or "N/A",
+            "region": school.region or "N/A",
+            "district": school.district or "N/A",
+            "address": school.address or "N/A",
+            "phone": school.phone or "N/A",
+            "email": school.email or "N/A",
+            "logo_url": getattr(school, 'logo_url', None),
+            "website": getattr(school, 'website', None)
+        },
+        "subscription": {
+            "plan": school.subscription_plan or "None",
+            "expires_at": school.subscription_expires_at,
+            "expires_at_formatted": expiry_date_formatted,
+            "days_left": days_left,
+            "days_overdue": days_overdue,
+            "is_expired": is_expired,
+            "is_active": school.is_active,
+            "is_locked_by_superadmin": school.is_locked_by_superadmin,
+            "status": school.status.value if hasattr(school.status, 'value') else str(school.status),
+            "status_label": status_label,
+            "status_color": status_color,
+            "status_type": status_type
+        },
+        "statistics": {
+            "total_teachers": total_teachers,
+            "active_teachers": active_teachers,
+            "inactive_teachers": total_teachers - active_teachers,
+            "total_students": total_students,
+            "active_students": active_students,
+            "inactive_students": total_students - active_students
+        },
+        "recent_payment": {
+            "date": recent_payment.created_at if recent_payment else None,
+            "amount": getattr(recent_payment, 'amount', None) if recent_payment else None,
+            "plan": getattr(recent_payment, 'plan', None) if recent_payment else None
+        } if recent_payment else None,
+        "permissions": {
+            "can_login": can_login,
+            "is_active": school.is_active,
+            "is_expired": is_expired,
+            "is_locked": school.is_locked_by_superadmin
+        },
+        "summary": {
+            "status": status_label,
+            "color": status_color,
+            "message": status_message
+        },
+        "checked_by": current_user.name,
+        "checked_at": now.isoformat()
+    }
 
 
 
@@ -1093,146 +1443,6 @@ def debug_token_info(
     
     return result    
 
-
-
-
-# ============================================================
-# 🔥🔥🔥 SUPERADMIN GET SCHOOL STATUS 🔥🔥🔥
-# ============================================================
-
-@router.get("/schools/{school_id}/status")
-def get_school_status(
-    school_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    🔥 SUPERADMIN ONLY: Get detailed school status.
-    
-    Returns comprehensive information about a school including:
-    - School details (name, level, type, region, district)
-    - Subscription information (plan, expiry, days left/overdue)
-    - Status (active, expired, locked)
-    - Statistics (teachers, students)
-    - Login eligibility (can_login)
-    """
-    
-
-
-    # ============================================================
-    # 1. CHECK SUPERADMIN PERMISSIONS
-    # ============================================================
-    if not is_superadmin(current_user):
-        logger.warning(f"⚠️ Unauthorized status check on school {school_id} by user {getattr(current_user, 'id', 'unknown')}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only superadmin can view this information"
-        )
-    
-    # ============================================================
-    # 2. FIND SCHOOL
-    # ============================================================
-    school = db.query(School).filter(School.id == school_id).first()
-    if not school:
-        logger.warning(f"⚠️ School {school_id} not found for status check")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"School with ID {school_id} not found"
-        )
-    
-    # ============================================================
-    # 3. CALCULATE SUBSCRIPTION STATUS
-    # ============================================================
-    now = get_tz_now()
-    days_left = 0
-    days_overdue = 0
-    is_expired = True
-    
-    if school.subscription_expires_at:
-        expires = school.subscription_expires_at
-        if expires.tzinfo is None:
-            expires = TZ.localize(expires)
-        
-        if expires > now:
-            days_left = (expires - now).days
-            is_expired = False
-        else:
-            days_overdue = (now - expires).days
-            is_expired = True
-    else:
-        # No expiry date = expired
-        is_expired = True
-        days_overdue = 0
-    
-    # ============================================================
-    # 4. GET TEACHERS AND STUDENTS STATISTICS
-    # ============================================================
-    from app.models.student import Student
-    
-    total_teachers = db.query(Teacher).filter(Teacher.school_id == school_id).count()
-    total_students = db.query(Student).filter(Student.school_id == school_id).count()
-    active_teachers = db.query(Teacher).filter(
-        Teacher.school_id == school_id, 
-        Teacher.status == "active"
-    ).count()
-    active_students = db.query(Student).filter(
-        Student.school_id == school_id, 
-        Student.status == "active"
-    ).count()
-    
-    # ============================================================
-    # 5. DETERMINE CAN_LOGIN
-    # ============================================================
-    can_login = school.is_active and not is_expired and not school.is_locked_by_superadmin
-    
-    # ============================================================
-    # 6. LOG AND RETURN
-    # ============================================================
-    logger.info(f"📊 School {school_id} ({school.name}) status checked by {current_user.name}")
-    logger.info(f"   Active: {school.is_active}, Expired: {is_expired}, Locked: {school.is_locked_by_superadmin}")
-    logger.info(f"   Teachers: {total_teachers}, Students: {total_students}")
-    logger.info(f"   Can login: {can_login}")
-    
-    return {
-        "school": {
-            "id": school.id,
-            "name": school.name,
-            "school_level": school.school_level,
-            "school_type": school.school_type,
-            "region": school.region,
-            "district": school.district,
-            "address": school.address,
-            "phone": school.phone,
-            "email": school.email,
-            "logo_url": school.logo_url,
-            "website": school.website
-        },
-        "subscription": {
-            "plan": school.subscription_plan,
-            "expires_at": school.subscription_expires_at,
-            "days_left": days_left,
-            "days_overdue": days_overdue,
-            "is_expired": is_expired,
-            "is_active": school.is_active,
-            "is_locked_by_superadmin": school.is_locked_by_superadmin,
-            "status": school.status,
-            "is_overridden": school.is_overridden
-        },
-        "statistics": {
-            "total_teachers": total_teachers,
-            "active_teachers": active_teachers,
-            "total_students": total_students,
-            "active_students": active_students
-        },
-        "permissions": {
-            "can_login": can_login,
-            "is_active": school.is_active,
-            "is_expired": is_expired,
-            "is_locked": school.is_locked_by_superadmin
-        },
-        "checked_by": current_user.name,
-        "checked_at": now.isoformat()
-    }
 
 
 # ============================================================
