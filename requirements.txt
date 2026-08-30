@@ -62,3 +62,4 @@ weasyprint>=61.0,<62.0
 ipython>=8.0.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+xlsxwriter==3.1.9   # 🔥🔥🔥 ONGEZA HII!
