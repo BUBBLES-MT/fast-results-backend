@@ -336,9 +336,13 @@ def export_class_results_excel(
     
     school = db.query(School).filter(School.id == school_class.school_id).first()
     school_name = school.name if school else "SECONDARY SCHOOL"
-    region = getattr(school, 'region', None) if school else "SINGIDA REGION"
-    if not region:
-        region = "SINGIDA REGION"
+    
+    # 🔥🔥🔥 BADILISHA HAPA: Tumia district, kama haipo tumia TANZANIA REGIONS
+    district_name = getattr(school, 'district', None) if school else None
+    if not district_name:
+        district_name = getattr(school, 'region', None) if school else None
+    if not district_name:
+        district_name = "TANZANIA REGIONS"
     
     # Get students
     students = db.query(Student).filter(Student.class_id == class_id).all()
@@ -439,7 +443,7 @@ def export_class_results_excel(
             "THE UNITED REPUBLIC OF TANZANIA",
             "PRESIDENT'S OFFICE",
             "REGIONAL ADMINISTRATION AND LOCAL GOVERNMENT",
-            region.upper(),
+            district_name.upper(),  # 🔥 HAPA SASA NI DISTRICT!
             f"{school_class.name} {exam_type} RESULTS {month_year}",
             school_name.upper()
         ]
@@ -604,9 +608,6 @@ def export_class_results_excel(
 
 
 
-
-
-
 @router.get("/class/{class_id}/summary-view")
 def get_class_summary_view(
     class_id: int,
@@ -644,7 +645,7 @@ def get_class_summary_view(
         # Try to get region from school database field (if exists)
         final_region = getattr(school, 'region', None)
     if not final_region:
-        final_region = "SINGIDA REGION"
+        final_region = "TANZANIA REGIONS"
     
     # Get all students in class
     students = db.query(Student).filter(Student.class_id == class_id).all()
