@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # 🔥 CORS SETTINGS - FIXED!
     # ============================================================
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com",
+        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com",
         description="Allowed CORS origins (comma separated)"
     )
     

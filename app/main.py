@@ -57,7 +57,7 @@ app = FastAPI(
 # 🔥 Get allowed origins from environment or use defaults
 ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com"
+    "http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com"
 ).split(",")
 
 # 🔥 Clean origins
@@ -158,7 +158,7 @@ logger.info("✅ All routers registered successfully")
 @app.get("/", summary="Root endpoint")
 def root():
     return {
-        "message": "MASI FAST RESULTS API",
+        "message": "MASI FAST RESULTS",
         "status": "running",
         "version": "3.0.0",
         "docs": "/docs",
@@ -289,7 +289,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 MASI FAST RESULTS API starting up...")
+    logger.info("🚀 MASI FAST RESULTS starting up...")
     logger.info(f"📡 Environment: {os.getenv('APP_ENVIRONMENT', 'development')}")
     logger.info(f"🔧 CORS Origins: {ALLOWED_ORIGINS}")
     logger.info(f"🗄️  Database: {'Connected' if os.getenv('DATABASE_URL') else 'Not configured'}")
