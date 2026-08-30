@@ -51,23 +51,29 @@ app = FastAPI(
 )
 
 # ============================================================
-# 🔥🔥🔥 CORS MIDDLEWARE - PRO MAX VERSION!
+# 🔥🔥🔥 CORS MIDDLEWARE - FIXED FOR VERCEL + RENDER! 🔥🔥🔥
 # ============================================================
 
 # 🔥 Get allowed origins from environment or use defaults
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com"
-).split(",")
+# ✅ NO WILDCARDS! - Domain halisi tu!
+ALLOWED_ORIGINS_DEFAULT = (
+    "http://localhost:3000,"
+    "http://localhost:8000,"
+    "https://bubblesmanage.com,"
+    "https://www.bubblesmanage.com,"
+    "https://fast-results-backend-ewis.onrender.com"
+)
 
-# 🔥 Clean origins
-ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
+ALLOWED_ORIGINS_STR = os.getenv("ALLOWED_ORIGINS", ALLOWED_ORIGINS_DEFAULT)
+
+# 🔥 Split and clean
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_STR.split(",") if origin.strip()]
 
 logger.info(f"🔧 CORS Allowed Origins: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=ALLOWED_ORIGINS,  # ✅ SASA NI LIST YA DOMAIN HALISI!
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     allow_headers=[
@@ -78,6 +84,7 @@ app.add_middleware(
         "X-Requested-With",
         "X-User-Type",
         "X-School-Id",
+        "*",  # 🔥 Ongeza "*" kwa urahisi
     ],
     expose_headers=[
         "Content-Length",
