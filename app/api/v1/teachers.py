@@ -674,6 +674,86 @@ def delete_teacher(
 
 
 
+
+
+# ============================================================
+# 🔥 UPDATE TEACHER - SECONDARY/ADVANCED (ONGEZA HAPA!)
+# ============================================================
+
+class TeacherUpdate(BaseModel):
+    name: str
+    username: str
+    email: str
+    phone1: Optional[str] = None
+    phone2: Optional[str] = None
+    role: str
+
+@router.put("/{teacher_id}", response_model=TeacherResponse)
+def update_teacher(
+    teacher_id: int,
+    teacher_data: TeacherUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Update a teacher's information - SECONDARY/ADVANCED only.
+    Only Headmaster, Headmistress, Second Master, Second Mistress, Academic can update.
+    """
+    
+    # ============================================================
+    # 🔥 PERMISSION CHECK
+    # ============================================================
+    user_role = getattr(current_user, 'role', None)
+    user_role_str = get_role_string(user_role) if user_role else "Unknown"
+    
+    if not isinstance(current_user, SuperAdmin) and not has_secondary_admin_access(user_role_str):
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Not authorized. Your role: {user_role_str}. Allowed roles: Headmaster, Headmistress, Second Master, Second Mistress, Academic or SuperAdmin"
+        )
+    
+    # ============================================================
+    # 🔥 FIND TEACHER
+    # ============================================================
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    
+    # ============================================================
+    # 🔥 VERIFY SCHOOL LEVEL
+    # ============================================================
+    verify_secondary_or_advanced_school(teacher.school_id, db)
+    
+    # ============================================================
+    # 🔥 CHECK IF USERNAME OR EMAIL EXISTS (for other teachers)
+    # ============================================================
+    existing = db.query(Teacher).filter(
+        (Teacher.username == teacher_data.username) | 
+        (Teacher.email == teacher_data.email),
+        Teacher.id != teacher_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username or email already exists")
+    
+    # ============================================================
+    # 🔥 UPDATE TEACHER
+    # ============================================================
+    teacher.name = teacher_data.name
+    teacher.username = teacher_data.username
+    teacher.email = teacher_data.email
+    teacher.phone1 = teacher_data.phone1
+    teacher.phone2 = teacher_data.phone2
+    teacher.role = teacher_data.role
+    
+    db.commit()
+    db.refresh(teacher)
+    
+    logger.info(f"✅ SECONDARY Teacher {teacher.name} (ID: {teacher.id}) updated by {current_user.name}")
+    
+    return teacher
+
+
+
 # ================================
 # 🔥 UPDATE TEACHER ROLE - SECONDARY/ADVANCED
 # ================================
