@@ -86,6 +86,9 @@ app.add_middleware(
         "X-User-Type",
         "X-School-Id",
         "*",  # 🔥 Ongeza "*" kwa urahisi
+        "Access-Control-Allow-Origin",  # 🔥 ONGEZA HII!
+        "Access-Control-Allow-Headers",  # 🔥 ONGEZA HII!
+        "Access-Control-Allow-Methods",  # 🔥 ONGEZA HII!
     ],
     expose_headers=[
         "Content-Length",
