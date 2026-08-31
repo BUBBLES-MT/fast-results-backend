@@ -80,7 +80,7 @@ class SubscriptionExpiredDetail(BaseModel):
 
 
 # ================================
-# Helper function to get role string
+# Helper functions
 # ================================
 def get_role_string(role):
     """Convert Enum role to string if needed"""
@@ -117,121 +117,70 @@ router = APIRouter()
 
 
 # ============================================================
-# 🔥 🔥 🔥 LOGIN - PRO MAX VERSION 3.0 (SMART REDIRECT)
+# 🔥 🔥 🔥 LOGIN - PRO MAX VERSION
 # ============================================================
 @router.post("/login", response_model=LoginResponse)
 def login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    """
-    Login for teachers and superadmins.
-    
-    🔥 SMART LOGIC:
-    - If subscription EXPIRED → Redirect to /payment
-    - If SuperAdmin LOCKED → Show maintenance message (NO redirect to payment)
-    """
+    """Login for teachers and superadmins"""
     
     # ================================
-    # Check if user is Teacher
+    # Check Teacher
     # ================================
     teacher = db.query(Teacher).filter(Teacher.username == login_data.username).first()
     if teacher and verify_password(login_data.password, teacher.password_hash):
         
-        # 🔥 Check if teacher is pending approval
+        # Check teacher status
         if teacher.status == "pending":
-            logger.warning(f"⚠️ Login attempt by pending teacher: {teacher.username} (ID: {teacher.id})")
+            logger.warning(f"⚠️ Login attempt by pending teacher: {teacher.username}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "ACCOUNT_PENDING",
-                    "message": (
-                        "📋 ACCOUNT PENDING APPROVAL\n\n"
-                        f"Dear {teacher.name},\n\n"
-                        "Your account is currently awaiting approval from the school administration.\n\n"
-                        "🔹 What to do:\n"
-                        "• Please wait for the school administrator to review your application\n"
-                        "• You will receive a notification once your account is activated\n"
-                        "• Contact the school directly if you need immediate assistance\n\n"
-                        "📞 Need help? Contact your school administrator."
-                    ),
+                    "message": "Your account is pending approval. Please wait for administrator approval.",
                     "status": "pending",
                     "school_id": teacher.school_id
                 }
             )
         
-        # 🔥 Check if teacher is rejected
         if teacher.status == "rejected":
-            logger.warning(f"⚠️ Login attempt by rejected teacher: {teacher.username} (ID: {teacher.id})")
+            logger.warning(f"⚠️ Login attempt by rejected teacher: {teacher.username}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "ACCOUNT_REJECTED",
-                    "message": (
-                        "❌ REGISTRATION NOT APPROVED\n\n"
-                        f"Dear {teacher.name},\n\n"
-                        "We regret to inform you that your registration application "
-                        "was not approved by the school administration.\n\n"
-                        f"Reason: {teacher.rejection_reason or 'No specific reason provided'}\n\n"
-                        "🔹 What to do:\n"
-                        "• Contact the school directly for more information\n"
-                        "• You may re-apply with correct information\n"
-                        "• Speak to the school administrator for guidance\n\n"
-                        "📞 Need help? Contact your school administrator."
-                    ),
+                    "message": "Your registration was not approved. Please contact your school administrator.",
                     "status": "rejected",
                     "school_id": teacher.school_id
                 }
             )
         
-        # 🔥 Check if teacher is suspended
         if teacher.status == "suspended":
-            logger.warning(f"⚠️ Login attempt by suspended teacher: {teacher.username} (ID: {teacher.id})")
+            logger.warning(f"⚠️ Login attempt by suspended teacher: {teacher.username}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "ACCOUNT_SUSPENDED",
-                    "message": (
-                        "🔒 ACCOUNT SUSPENDED\n\n"
-                        f"Dear {teacher.name},\n\n"
-                        "Your account has been temporarily suspended.\n\n"
-                        "🔹 What to do:\n"
-                        "• Contact the school administrator for more information\n"
-                        "• Your school administration will guide you on next steps\n"
-                        "• This is a temporary measure for review\n\n"
-                        "📞 Need help? Contact your school administrator."
-                    ),
+                    "message": "Your account has been suspended. Please contact your school administrator.",
                     "status": "suspended",
                     "school_id": teacher.school_id
                 }
             )
         
-        # Check if teacher account is active
         if not teacher.active:
-            logger.warning(f"⚠️ Login attempt by inactive teacher: {teacher.username} (ID: {teacher.id})")
+            logger.warning(f"⚠️ Login attempt by inactive teacher: {teacher.username}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "ACCOUNT_INACTIVE",
-                    "message": (
-                        "⏸️ ACCOUNT INACTIVE\n\n"
-                        f"Dear {teacher.name},\n\n"
-                        "Your account is currently inactive.\n\n"
-                        "🔹 What to do:\n"
-                        "• Contact the school administrator to reactivate your account\n"
-                        "• Ensure all your details are up to date\n"
-                        "• The school administration will assist you\n\n"
-                        "📞 Need help? Contact your school administrator."
-                    )
+                    "message": "Your account is inactive. Please contact your school administrator."
                 }
             )
         
-        # Get school information
+        # Get school
         school = db.query(School).filter(School.id == teacher.school_id).first()
         
         if school:
-            # ============================================================
-            # 🔥🔥🔥 SMART CHECK: EXPIRED vs LOCKED
-            # ============================================================
-            
-            # FIRST: Check if subscription is expired
+            # Check subscription
             is_expired = False
             days_overdue = 0
             expiry_date_str = None
@@ -248,66 +197,14 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                     expiry_date_str = expires.isoformat()
                     plan_name = school.subscription_plan.value if school.subscription_plan else "N/A"
             
-            # ============================================================
-            # 🔥 CASE 1: SUBSCRIPTION EXPIRED → REDIRECT TO PAYMENT
-            # ============================================================
+            # Subscription expired
             if is_expired:
-                logger.warning(f"🔴 Login blocked for school {school.name} (ID: {school.id}) - SUBSCRIPTION EXPIRED. Days overdue: {days_overdue}")
-                
-                message = (
-                    "⚠️ SERVICE INTERRUPTED - ACCOUNT UPDATE REQUIRED\n\n"
-                    "═══════════════════════════════════════════════════════════\n"
-                    f"  School: {school.name}\n"
-                    "═══════════════════════════════════════════════════════════\n\n"
-                    
-                    "Dear School Community,\n\n"
-                    "We are currently performing a scheduled system update on your "
-                    "school's account. This is a standard procedure to ensure all "
-                    "services remain secure, fast, and reliable.\n\n"
-                    
-                    "📋 UPDATE DETAILS:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    f"  • Status: System update in progress\n"
-                    f"  • Days since update started: {days_overdue} days ago\n"
-                    f"  • Previous plan: {plan_name}\n"
-                    f"  • Estimated completion: 24-48 hours after confirmation\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "🔹 WHAT YOU NEED TO DO:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  1️⃣ Contact your school management to complete the update\n"
-                    "  2️⃣ The system update requires a simple confirmation\n"
-                    "  3️⃣ Once confirmed, services will be restored immediately\n"
-                    "  4️⃣ You will receive a notification when complete\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "🔹 BENEFITS OF THIS UPDATE:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  ✅ Improved system performance\n"
-                    "  ✅ Enhanced security features\n"
-                    "  ✅ New features and improvements\n"
-                    "  ✅ Faster response times\n"
-                    "  ✅ Better user experience\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "📞 NEED ASSISTANCE?\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  📧 Email: support@masifastresults.com\n"
-                    "  📞 Phone: +255 700 000 000\n"
-                    "  🕐 Hours: Monday - Friday, 8:00 AM - 6:00 PM (EAT)\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "We apologize for any inconvenience and appreciate your patience "
-                    "as we work to improve your experience. Thank you for being part "
-                    "of the MASI FAST RESULTS community! 🚀"
-                )
-                
-                # ✅ REDIRECT TO PAYMENT PAGE!
+                logger.warning(f"🔴 Login blocked for school {school.name} - SUBSCRIPTION EXPIRED")
                 raise HTTPException(
                     status_code=status.HTTP_402_PAYMENT_REQUIRED,
                     detail={
                         "error": "SUBSCRIPTION_EXPIRED",
-                        "message": message,
+                        "message": "Your school subscription has expired. Please renew to continue.",
                         "school_id": school.id,
                         "school_name": school.name,
                         "expiry_date": expiry_date_str,
@@ -319,62 +216,14 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                     }
                 )
             
-            # ============================================================
-            # 🔥 CASE 2: SUPERADMIN LOCKED → MAINTENANCE MESSAGE (NO PAYMENT)
-            # ============================================================
+            # Locked by superadmin
             if school.is_locked_by_superadmin:
-                logger.warning(f"🔒 Login blocked for school {school.name} (ID: {school.id}) - LOCKED BY SUPERADMIN")
-                
-                message = (
-                    "🔒 SYSTEM MAINTENANCE IN PROGRESS\n\n"
-                    "═══════════════════════════════════════════════════════════\n"
-                    f"  School: {school.name}\n"
-                    "═══════════════════════════════════════════════════════════\n\n"
-                    
-                    "Dear School Community,\n\n"
-                    "We are currently performing scheduled system maintenance on "
-                    "your school's account to improve security and performance.\n\n"
-                    
-                    "📋 MAINTENANCE DETAILS:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  • Status: Maintenance in progress\n"
-                    "  • Estimated completion: 24 hours\n"
-                    "  • Action required: None - automated process\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "🔹 WHAT TO EXPECT:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  1️⃣ Services will be restored automatically\n"
-                    "  2️⃣ You will be notified when complete\n"
-                    "  3️⃣ No action required from your side\n"
-                    "  4️⃣ All data remains secure\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "🔹 MAINTENANCE BENEFITS:\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  ✅ Improved system performance\n"
-                    "  ✅ Enhanced security\n"
-                    "  ✅ Bug fixes and improvements\n"
-                    "  ✅ Better user experience\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "📞 NEED ASSISTANCE?\n"
-                    "──────────────────────────────────────────────────────────\n"
-                    "  📧 Email: support@masifastresults.com\n"
-                    "  📞 Phone: +255 700 000 000\n"
-                    "  🕐 Hours: Monday - Friday, 8:00 AM - 6:00 PM (EAT)\n"
-                    "──────────────────────────────────────────────────────────\n\n"
-                    
-                    "Thank you for your patience and understanding. "
-                    "We'll be back online soon! 🚀"
-                )
-                
-                # ✅ NO REDIRECT TO PAYMENT - JUST MAINTENANCE MESSAGE!
+                logger.warning(f"🔒 Login blocked for school {school.name} - LOCKED BY SUPERADMIN")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail={
                         "error": "SYSTEM_MAINTENANCE",
-                        "message": message,
+                        "message": "System maintenance in progress. Please try again later.",
                         "school_id": school.id,
                         "school_name": school.name,
                         "redirect_to": None,
@@ -383,26 +232,23 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                     }
                 )
             
-            logger.info(f"✅ Login successful: {teacher.username} -> {school.name} (ID: {school.id})")
+            logger.info(f"✅ Login successful: {teacher.username} -> {school.name}")
         
-        # Get role as string (handle Enum)
+        # Generate token
         role_value = get_role_string(teacher.role)
-        
-        # Get school level (default to 'secondary' if not set)
         school_level = school.school_level if school and school.school_level else "secondary"
         redirect_url = get_redirect_url(school_level)
         
-        # ✅ Include school_id in token for frontend
         access_token = create_access_token(
             data={
-                "sub": str(teacher.id), 
+                "sub": str(teacher.id),
                 "user_type": role_value,
                 "school_level": school_level,
                 "school_id": teacher.school_id
             }
         )
         
-        # ✅ Calculate days left - WITH TIMEZONE FIX!
+        # Calculate days left
         now = get_tz_now()
         days_left = 0
         subscription_active = True
@@ -434,25 +280,23 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         )
     
     # ================================
-    # Check if user is Superadmin
+    # Check Superadmin
     # ================================
     superadmin = db.query(SuperAdmin).filter(SuperAdmin.username == login_data.username).first()
     if superadmin and verify_password(login_data.password, superadmin.password_hash):
         
-        # Check if superadmin account is active
         if not superadmin.is_active:
-            logger.warning(f"⚠️ Login attempt by inactive superadmin: {superadmin.username} (ID: {superadmin.id})")
+            logger.warning(f"⚠️ Login attempt by inactive superadmin: {superadmin.username}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Account is deactivated. Contact system administrator."
             )
         
-        # Create access token for superadmin (no subscription checks)
         access_token = create_access_token(
             data={"sub": str(superadmin.id), "user_type": "Superadmin"}
         )
         
-        logger.info(f"✅ Superadmin login successful: {superadmin.username} (ID: {superadmin.id})")
+        logger.info(f"✅ Superadmin login successful: {superadmin.username}")
         
         return LoginResponse(
             access_token=access_token,
@@ -480,129 +324,71 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail={
             "error": "INVALID_CREDENTIALS",
-            "message": (
-                "❌ LOGIN FAILED\n\n"
-                "The username or password you entered is incorrect.\n\n"
-                "🔹 What to do:\n"
-                "• Check your username and password and try again\n"
-                "• If you forgot your password, use the 'Forgot Password' option\n"
-                "• Contact your school administrator if you need assistance\n\n"
-                "📞 Need help?\n"
-                "📧 Email: support@masifastresults.com\n"
-                "📞 Phone: +255 700 000 000"
-            )
+            "message": "Invalid username or password. Please try again."
         }
     )
 
 
 # ============================================================
-# 🔥 REGISTER - AUTO-APPROVED KWA WAKUU PEKEE!
+# 🔥 REGISTER
 # ============================================================
 @router.post("/register")
 def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
-    """
-    Register a new teacher.
+    """Register a new teacher"""
     
-    🔥 WATU WANAOWEKWA ACTIVE MOJA KWA MOJA:
-    - Mwalimu Mkuu (Primary)
-    - Headmaster (Secondary)
-    - Headmistress (Secondary)
-    - Second Master (Secondary)
-    - Second Mistress (Secondary)
-    
-    🔥 WALIMU WENGINE:
-    - WANAWEKWA PENDING (WANAHITAJI APPROVAL)
-    """
-    
-    # Check if school exists
+    # Check school exists
     school = db.query(School).filter(School.id == register_data.school_id).first()
     if not school:
         logger.error(f"❌ Registration failed: School ID {register_data.school_id} not found")
         raise HTTPException(status_code=404, detail="School not found")
     
-    # Check if school is locked by superadmin
+    # Check school locked
     if school.is_locked_by_superadmin:
-        logger.warning(f"❌ Registration blocked: School {school.name} (ID: {school.id}) is locked")
+        logger.warning(f"❌ Registration blocked: School {school.name} is locked")
         raise HTTPException(
             status_code=403,
             detail={
                 "error": "REGISTRATION_UNAVAILABLE",
-                "message": (
-                    "🔒 REGISTRATION TEMPORARILY UNAVAILABLE\n\n"
-                    "Dear Applicant,\n\n"
-                    "We are currently performing scheduled system maintenance on this "
-                    "school's account. New registrations are temporarily suspended.\n\n"
-                    "🔹 What to do:\n"
-                    "• Please try again later\n"
-                    "• The school management has been notified\n"
-                    "• Services will be restored shortly\n\n"
-                    "📞 Need help? Contact your school administrator."
-                )
+                "message": "Registration is temporarily unavailable. Please try again later."
             }
         )
     
-    # Check if subscription expired
+    # Check subscription
     if not school.is_subscription_active():
-        now = get_tz_now()
-        days_overdue = 0
-        if school.subscription_expires_at:
-            expires = school.subscription_expires_at
-            if expires.tzinfo is None:
-                expires = TZ.localize(expires)
-            days_overdue = max(0, (now - expires).days)
-        
-        logger.warning(f"❌ Registration blocked: School {school.name} (ID: {school.id}) subscription expired. Days overdue: {days_overdue}")
-        
+        logger.warning(f"❌ Registration blocked: School {school.name} subscription expired")
         raise HTTPException(
             status_code=402,
             detail={
                 "error": "REGISTRATION_UNAVAILABLE",
-                "message": (
-                    "⚠️ REGISTRATION TEMPORARILY UNAVAILABLE\n\n"
-                    "Dear Applicant,\n\n"
-                    "We are currently performing system maintenance on this "
-                    "school's account. New registrations are temporarily suspended.\n\n"
-                    "🔹 What to do:\n"
-                    "• Please try again later\n"
-                    "• The school management has been notified\n"
-                    "• Services will be restored shortly\n\n"
-                    "📞 Need help? Contact your school administrator."
-                ),
-                "school_id": school.id,
-                "school_name": school.name,
-                "days_overdue": days_overdue
+                "message": "Registration is temporarily unavailable. Please contact your school administrator."
             }
         )
     
-    # Check if username exists
+    # Check username
     existing = db.query(Teacher).filter(Teacher.username == register_data.username).first()
     if existing:
         logger.warning(f"❌ Registration failed: Username '{register_data.username}' already exists")
         raise HTTPException(status_code=400, detail="Username already exists")
     
-    # Check if email exists
+    # Check email
     existing_email = db.query(Teacher).filter(Teacher.email == register_data.email).first()
     if existing_email:
         logger.warning(f"❌ Registration failed: Email '{register_data.email}' already exists")
         raise HTTPException(status_code=400, detail="Email already exists")
     
-    # 🔥 Check if teacher already active in another school
+    # Check active in another school
     existing_active = db.query(Teacher).filter(
         Teacher.email == register_data.email,
         Teacher.status == "active"
     ).first()
-    
     if existing_active:
-        logger.warning(f"❌ Registration failed: Teacher with email '{register_data.email}' already active in another school")
-        raise HTTPException(
-            status_code=400,
-            detail="Teacher with this email is already active in another school."
-        )
+        logger.warning(f"❌ Registration failed: Teacher with email '{register_data.email}' already active")
+        raise HTTPException(status_code=400, detail="Teacher with this email is already active in another school.")
     
-    # 🔥 ANGAHA KAMA MWALIMU NI MKUU WA SHULE (AUTO-APPROVED)
+    # Auto-approved roles
     is_auto_approved = register_data.role in AUTO_APPROVED_ROLES
     
-    # 🔥 UNDA MWALIMU
+    # Create teacher
     new_teacher = Teacher(
         name=register_data.name,
         username=register_data.username,
@@ -623,35 +409,15 @@ def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_teacher)
     
-    # 🔥 UJUMBE KULINGANA NA AINA YA MWALIMU
+    # Response message
     if is_auto_approved:
-        message = (
-            "✅ REGISTRATION SUCCESSFUL!\n\n"
-            f"Dear {register_data.name},\n\n"
-            "Your registration has been completed successfully. "
-            f"You are now registered as {register_data.role}.\n\n"
-            "🔹 What to do next:\n"
-            "• Login using your username and password\n"
-            "• Complete your profile information\n"
-            "• Start managing your school\n\n"
-            "📞 Need help? Contact support@masifastresults.com"
-        )
+        message = f"Registration successful! You are now registered as {register_data.role}."
         status_text = "active"
-        logger.info(f"👑 {register_data.role} registered (auto-approved): {new_teacher.name} (ID: {new_teacher.id}) - School: {school.name}")
+        logger.info(f"👑 {register_data.role} registered (auto-approved): {new_teacher.name}")
     else:
-        message = (
-            "✅ REGISTRATION SUCCESSFUL - PENDING APPROVAL\n\n"
-            f"Dear {register_data.name},\n\n"
-            "Your registration has been completed successfully and is now "
-            "awaiting approval from the school administration.\n\n"
-            "🔹 What to do next:\n"
-            "• Wait for the school administrator to review your application\n"
-            "• You will receive a notification once approved\n"
-            "• Contact the school directly if you need assistance\n\n"
-            "📞 Need help? Contact your school administrator."
-        )
+        message = "Registration successful! Your application is pending approval from the school administration."
         status_text = "pending"
-        logger.info(f"📝 New teacher registered (pending): {new_teacher.name} (ID: {new_teacher.id}) - School: {school.name}")
+        logger.info(f"📝 New teacher registered (pending): {new_teacher.name}")
     
     return {
         "message": message,
@@ -665,7 +431,7 @@ def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
 
 
 # ============================================================
-# 🔥🔥🔥 FORGOT PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 FORGOT PASSWORD - DIALOG SUPPORT 🔥🔥🔥
 # ============================================================
 
 @router.post("/forgot-password")
@@ -676,21 +442,18 @@ async def forgot_password(
     """
     Send password reset email to user
     
-    🔥 REDIS IMETENGWA KABISA! HAKUNA HUSIANO NA REDIS!
+    🔥 HII INAUNGANISHWA NA DIALOG KWENYE LOGIN PAGE!
     Token inahifadhiwa kwenye DATABASE (Teacher/User model)
     """
     try:
         # 🔥 Find user by email (Teacher or SuperAdmin)
         user = db.query(Teacher).filter(Teacher.email == request.email).first()
-        is_superadmin = False
         
         if not user:
             user = db.query(SuperAdmin).filter(SuperAdmin.email == request.email).first()
-            if user:
-                is_superadmin = True
         
         if not user:
-            # Don't reveal if user exists or not (security)
+            # Security: Don't reveal if user exists
             logger.info(f"🔐 Password reset requested for non-existent email: {request.email}")
             return {
                 "message": "If your email is registered, you will receive a password reset link"
@@ -706,7 +469,7 @@ async def forgot_password(
         # 🔥 Generate reset token
         token = secrets.token_urlsafe(32)
         
-        # 🔥🔥🔥 HAPA NDIO TOKEN INAHIFADHIWA KWENYE DATABASE (SI REDIS!) 🔥🔥🔥
+        # 🔥 Save token to database (NOT Redis!)
         user.reset_token = token
         user.reset_token_expires = get_tz_now() + timedelta(hours=1)
         db.commit()
@@ -745,7 +508,7 @@ async def forgot_password(
 
 
 # ============================================================
-# 🔥🔥🔥 RESET PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 RESET PASSWORD 🔥🔥🔥
 # ============================================================
 
 @router.post("/reset-password")
@@ -756,7 +519,7 @@ async def reset_password(
     """
     Reset password using token from email
     
-    🔥 REDIS IMETENGWA KABISA! Token inathibitishwa kutoka DATABASE!
+    🔥 Token inathibitishwa kutoka DATABASE!
     """
     try:
         # 🔥 Validate passwords match
@@ -773,8 +536,7 @@ async def reset_password(
                 detail="Password must be at least 6 characters"
             )
         
-        # 🔥🔥🔥 HAPA TOKEN INATHIBITISHWA KUTOKA DATABASE (SI REDIS!) 🔥🔥🔥
-        # Find user by token
+        # 🔥 Find user by token from database
         user = db.query(Teacher).filter(
             Teacher.reset_token == request.token,
             Teacher.reset_token_expires > get_tz_now()
@@ -819,7 +581,7 @@ async def reset_password(
 
 
 # ============================================================
-# 🔥🔥🔥 VALIDATE RESET TOKEN - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 VALIDATE RESET TOKEN 🔥🔥🔥
 # ============================================================
 
 @router.get("/validate-reset-token/{token}")
@@ -830,9 +592,9 @@ async def validate_reset_token(
     """
     Validate if a reset token is still valid (for frontend)
     
-    🔥 REDIS IMETENGWA KABISA! Token inathibitishwa kutoka DATABASE!
+    🔥 Token inathibitishwa kutoka DATABASE!
     """
-    # 🔥 Angalia kwenye database
+    # 🔥 Check database
     user = db.query(Teacher).filter(
         Teacher.reset_token == token,
         Teacher.reset_token_expires > get_tz_now()
@@ -851,13 +613,12 @@ async def validate_reset_token(
 
 
 # ============================================================
-# 🔥 GET ME - ILIYOBORESHA
+# 🔥 GET ME
 # ============================================================
 @router.get("/me")
 def get_me(current_user = Depends(get_current_user)):
     """Get current logged in user info"""
     
-    # Check if user is superadmin or teacher
     if hasattr(current_user, 'is_superadmin') and current_user.is_superadmin:
         user_type = "Superadmin"
         role = "Superadmin"
@@ -867,7 +628,7 @@ def get_me(current_user = Depends(get_current_user)):
         user_type = get_role_string(current_user.role) if hasattr(current_user, 'role') else "Teacher"
         role = user_type
         school_id = getattr(current_user, 'school_id', None)
-        # Get school level
+        
         if school_id:
             from app.core.database import SessionLocal
             db = SessionLocal()
@@ -888,7 +649,6 @@ def get_me(current_user = Depends(get_current_user)):
         "status": getattr(current_user, 'status', 'active')
     }
     
-    # Add school_id for teachers
     if school_id:
         response["school_id"] = school_id
     
@@ -896,17 +656,16 @@ def get_me(current_user = Depends(get_current_user)):
 
 
 # ============================================================
-# 🔥 CHECK SUBSCRIPTION - ILIYOBORESHA
+# 🔥 CHECK SUBSCRIPTION
 # ============================================================
-@router.get("/check-subscription/{school_id}")  
+@router.get("/check-subscription/{school_id}")
 def check_subscription_status(
     school_id: int,
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Check subscription status for a school (for superadmin)"""
+    """Check subscription status for a school (superadmin only)"""
     
-    # Only superadmin can check subscription status
     if not (hasattr(current_user, 'is_superadmin') and current_user.is_superadmin):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -917,7 +676,6 @@ def check_subscription_status(
     is_active = school.is_subscription_active()
     status_text, days_left = school.subscription_status()
     
-    # Calculate days overdue - WITH TIMEZONE!
     now = get_tz_now()
     days_overdue = 0
     expiry_date_str = None
@@ -945,7 +703,7 @@ def check_subscription_status(
 
 
 # ============================================================
-# 🔥 EXTEND SUBSCRIPTION - ILIYOBORESHA
+# 🔥 EXTEND SUBSCRIPTION
 # ============================================================
 class ExtendSubscriptionRequest(BaseModel):
     days: int = 30
@@ -960,16 +718,14 @@ def extend_subscription(
 ):
     """Extend subscription for a school (superadmin only)"""
     
-    # Only superadmin can extend subscription
     if not (hasattr(current_user, 'is_superadmin') and current_user.is_superadmin):
-        logger.warning(f"⚠️ Unauthorized attempt to extend subscription for school {school_id} by user {current_user.id}")
+        logger.warning(f"⚠️ Unauthorized attempt to extend subscription for school {school_id}")
         raise HTTPException(status_code=403, detail="Not authorized")
     
     school = db.query(School).filter(School.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
     
-    # Calculate new expiry date - WITH TIMEZONE!
     now = get_tz_now()
     
     if school.subscription_expires_at:
@@ -988,14 +744,13 @@ def extend_subscription(
     school.is_active = True
     school.is_locked_by_superadmin = False
     
-    # Update status
     if school.status == SchoolStatus.EXPIRED or school.status == SchoolStatus.INACTIVE:
         school.status = SchoolStatus.ACTIVE
     
     db.commit()
     db.refresh(school)
     
-    logger.info(f"🔑 Subscription extended for school {school.name} (ID: {school.id}) by {request.days} days. New expiry: {new_expiry}")
+    logger.info(f"🔑 Subscription extended for school {school.name} by {request.days} days")
     
     return {
         "message": f"Subscription extended by {request.days} days",
