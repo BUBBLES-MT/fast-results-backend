@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# 🔥 CONFIGURATION CLASS - PRO MAX VERSION 4.0
+# 🔥 CONFIGURATION CLASS - PRO MAX VERSION 5.0
 # ============================================================
 
 class Settings(BaseSettings):
@@ -179,6 +179,12 @@ class Settings(BaseSettings):
     MAILTRAP_FROM_NAME: str = Field(
         default="MASI FAST RESULTS",
         description="Mailtrap from name"
+    )
+    
+    # 🔥🔥🔥 NEW - MAILTRAP ENABLED 🔥🔥🔥
+    MAILTRAP_ENABLED: bool = Field(
+        default=True,
+        description="Enable Mailtrap API for sending emails"
     )
     
     # ============================================================
@@ -383,6 +389,11 @@ class Settings(BaseSettings):
             self.MAIL_PASSWORD is not None
         )
     
+    @property
+    def is_mailtrap_enabled(self) -> bool:
+        """Check if Mailtrap API is enabled"""
+        return self.MAILTRAP_ENABLED and self.MAILTRAP_API_TOKEN is not None and self.MAILTRAP_API_TOKEN != ""
+    
     # ============================================================
     # 🔥 PYDANTIC V2 CONFIG
     # ============================================================
@@ -436,7 +447,9 @@ if __name__ == "__main__":
     print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}")
     print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}")
     print(f"  MAILTRAP_FROM_NAME: {settings.MAILTRAP_FROM_NAME}")
+    print(f"  MAILTRAP_ENABLED: {settings.MAILTRAP_ENABLED}")
     print(f"  Email Enabled: {settings.is_email_enabled}")
+    print(f"  Mailtrap Enabled: {settings.is_mailtrap_enabled}")
     print("-" * 60)
     print("📦 REDIS Settings:")
     print(f"  REDIS_URL: {settings.REDIS_URL[:40]}...")
