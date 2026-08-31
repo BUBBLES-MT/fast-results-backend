@@ -1217,3 +1217,189 @@ def get_parent_dashboard(
         "children": children_data,
         "total_children": len(children_data)
     }
+
+
+
+# ============================================================
+# 🔥🔥🔥 PARENT FORGOT PASSWORD - IMEBORESHA! 🔥🔥🔥
+# ============================================================
+
+# ============================================================
+# 🔥 PYDANTIC SCHEMAS - Ongeza chini ya schemas zingine
+# ============================================================
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str
+
+
+# ============================================================
+# 🔥 PARENT FORGOT PASSWORD - KISWAHILI!
+# ============================================================
+
+@router.post("/forgot-password")
+async def parent_forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Tuma kiungo cha kuweka upya nenosiri kwa mzazi
+    """
+    try:
+        # 🔥 Tafuta mzazi kwa barua pepe
+        parent = db.query(Parent).filter(Parent.email == request.email).first()
+        
+        if not parent:
+            logger.info(f"🔐 Password reset requested for non-existent parent email: {request.email}")
+            return {
+                "message": "Kama barua pepe yako imesajiliwa, utapokea kiungo cha kuweka upya nenosiri"
+            }
+        
+        # 🔥 Angalia kama mzazi yuko active
+        if not parent.is_active:
+            logger.warning(f"⚠️ Password reset requested for inactive parent: {request.email}")
+            return {
+                "message": "Kama barua pepe yako imesajiliwa, utapokea kiungo cha kuweka upya nenosiri"
+            }
+        
+        # 🔥 Generate token
+        token = secrets.token_urlsafe(32)
+        
+        # 🔥 Hifadhi token kwenye database
+        parent.reset_token = token
+        parent.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        db.commit()
+        
+        # 🔥 Pata jina la mzazi
+        username = parent.name or parent.username or "Mzazi"
+        
+        # 🔥 Tuma email - LINK YA PARENT RESET PAGE!
+        reset_link = f"{settings.FRONTEND_URL}/parent/reset-password?token={token}"
+        
+        email_sent = email_service.send_password_reset_email(
+            to_email=parent.email,
+            reset_token=token,
+            username=username
+        )
+        
+        if email_sent:
+            logger.info(f"✅ Password reset email sent to parent: {parent.email}")
+            logger.info(f"🔗 Reset link: {reset_link}")
+            return {
+                "message": "Kiungo cha kuweka upya nenosiri kimetumwa kwa barua pepe yako",
+                "email": parent.email
+            }
+        else:
+            logger.error(f"❌ Failed to send password reset email to parent: {parent.email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Imeshindwa kutuma barua pepe. Tafadhali jaribu tena."
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Parent forgot password error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Hitilafu imetokea. Tafadhali jaribu tena baadaye."
+        )
+
+
+# ============================================================
+# 🔥 PARENT RESET PASSWORD - KISWAHILI!
+# ============================================================
+
+@router.post("/reset-password")
+async def parent_reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Weka upya nenosiri la mzazi kwa kutumia tokeni
+    """
+    try:
+        # 🔥 Hakikisha manenosiri yanafanana
+        if request.new_password != request.confirm_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Manenosiri hayafanani"
+            )
+        
+        # 🔥 Hakikisha nenosiri lina herufi 6+
+        if len(request.new_password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nenosiri lazima iwe na herufi 6 au zaidi"
+            )
+        
+        # 🔥 Tafuta mzazi kwa tokeni
+        parent = db.query(Parent).filter(
+            Parent.reset_token == request.token,
+            Parent.reset_token_expires > datetime.utcnow()
+        ).first()
+        
+        if not parent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Kiungo batili au kimeisha muda wake"
+            )
+        
+        # 🔥 Badilisha nenosiri
+        parent.password_hash = get_password_hash(request.new_password)
+        parent.updated_at = datetime.utcnow()
+        
+        # 🔥 Futa tokeni (one-time use)
+        parent.reset_token = None
+        parent.reset_token_expires = None
+        
+        db.commit()
+        
+        logger.info(f"✅ Password reset successful for parent: {parent.email}")
+        
+        return {
+            "message": "Nenosiri limewekwa upya kikamilifu. Sasa unaweza kuingia kwa nenosiri lako jipya."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Parent reset password error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Hitilafu imetokea wakati wa kuweka upya nenosiri. Tafadhali jaribu tena."
+        )
+
+
+# ============================================================
+# 🔥 PARENT VALIDATE RESET TOKEN - KISWAHILI!
+# ============================================================
+
+@router.get("/validate-reset-token/{token}")
+async def parent_validate_reset_token(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Thibitisha kama tokeni ya kuweka upya nenosiri bado ni halali
+    """
+    parent = db.query(Parent).filter(
+        Parent.reset_token == token,
+        Parent.reset_token_expires > datetime.utcnow()
+    ).first()
+    
+    if parent:
+        return {
+            "valid": True,
+            "user_id": parent.id,
+            "message": "Tokeni halali"
+        }
+    else:
+        return {
+            "valid": False,
+            "message": "Kiungo batili au kimeisha muda wake"
+        }
