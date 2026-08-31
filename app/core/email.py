@@ -347,3 +347,69 @@ def send_password_reset_email(to_email: str, reset_link: str, username: str):
     logger.info(f"🔗 Reset link: {reset_link}")
     
     return send_email(to_email, "🔐 Password Reset Request - MASI FAST RESULTS", html_content)
+
+
+# ============================================================
+# 🔥🔥🔥 EMAIL SERVICE CLASS - HII NDIO ILIKOSA! 🔥🔥🔥
+# ============================================================
+
+class EmailService:
+    """
+    🔥 Email Service wrapper for compatibility with auth.py
+    Hii ndio inaitwa na app/api/v1/auth/auth.py
+    """
+    
+    def send_password_reset_email(self, to_email: str, reset_token: str, username: str) -> bool:
+        """
+        Send password reset email using token
+        
+        Args:
+            to_email: Recipient email address
+            reset_token: Password reset token
+            username: User's name for personalization
+        
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        # 🔥 Build reset link
+        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
+        
+        # 🔥 Send email
+        return send_password_reset_email(to_email, reset_link, username)
+    
+    def send_email(self, to_email: str, subject: str, html_content: str, text_content: str = None) -> bool:
+        """
+        Generic send email method
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject
+            html_content: HTML content
+            text_content: Plain text content (optional)
+        
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        return send_email(to_email, subject, html_content)
+
+
+# ============================================================
+# 🔥🔥🔥 SINGLETON INSTANCE - email_service 🔥🔥🔥
+# ============================================================
+
+# 🔥 HII NDIO INATUMIWA NA auth.py!
+email_service = EmailService()
+
+
+# ============================================================
+# 🔥 EXPOSE FUNCTIONS FOR DIRECT USE
+# ============================================================
+
+__all__ = [
+    "email_service",
+    "send_email",
+    "send_email_mailtrap",
+    "send_email_smtp",
+    "send_password_reset_email",
+    "EmailService"
+]
