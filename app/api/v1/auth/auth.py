@@ -2,16 +2,19 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime, timedelta
 import pytz
+import secrets
+import logging
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_current_user, get_password_hash
+from app.core.email import email_service
+from app.core.redis import redis_service
 from app.models.teacher import Teacher
 from app.models.superadmin import SuperAdmin
 from app.models.school import School, SchoolStatus
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,7 @@ def get_tz_now():
 
 
 # ================================
-# Pydantic Schemas
+# 🔥 PYDANTIC SCHEMAS - NEW!
 # ================================
 
 class LoginRequest(BaseModel):
@@ -59,6 +62,14 @@ class RegisterRequest(BaseModel):
     phone2: Optional[str] = None
     role: str = "Teacher"
     school_id: int
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str
 
 class SubscriptionExpiredDetail(BaseModel):
     message: str
@@ -302,7 +313,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                         "school_name": school.name,
                         "expiry_date": expiry_date_str,
                         "days_overdue": days_overdue,
-                        "redirect_to": "/payment",  # ✅ WAPELEKWE PAYMENT
+                        "redirect_to": "/payment",
                         "plan": plan_name,
                         "support_email": "support@masifastresults.com",
                         "support_phone": "+255 700 000 000"
@@ -367,7 +378,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
                         "message": message,
                         "school_id": school.id,
                         "school_name": school.name,
-                        "redirect_to": None,  # ✅ NO REDIRECT TO PAYMENT!
+                        "redirect_to": None,
                         "support_email": "support@masifastresults.com",
                         "support_phone": "+255 700 000 000"
                     }
@@ -652,6 +663,178 @@ def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
         "school_level": school.school_level,
         "role": register_data.role
     }
+
+
+# ============================================================
+# 🔥🔥🔥 FORGOT PASSWORD - SEND RESET EMAIL 🔥🔥🔥
+# ============================================================
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Send password reset email to user
+    
+    🔥 HII INATUMIA MAILTRAP + REDIS!
+    """
+    try:
+        # 🔥 Find user by email (Teacher or SuperAdmin)
+        user = db.query(Teacher).filter(Teacher.email == request.email).first()
+        is_superadmin = False
+        
+        if not user:
+            user = db.query(SuperAdmin).filter(SuperAdmin.email == request.email).first()
+            if user:
+                is_superadmin = True
+        
+        if not user:
+            # Don't reveal if user exists or not (security)
+            logger.info(f"🔐 Password reset requested for non-existent email: {request.email}")
+            return {
+                "message": "If your email is registered, you will receive a password reset link"
+            }
+        
+        # 🔥 Check if user is active
+        if hasattr(user, 'status') and user.status != "active":
+            logger.warning(f"⚠️ Password reset requested for inactive user: {request.email}")
+            return {
+                "message": "If your email is registered, you will receive a password reset link"
+            }
+        
+        # 🔥 Generate reset token
+        token = secrets.token_urlsafe(32)
+        
+        # 🔥 Store token in Redis (expires in 1 hour)
+        redis_service.set_reset_token(token, user.id, expire=3600)
+        
+        # 🔥 Get username
+        username = user.name or user.username or "User"
+        
+        # 🔥 Send email
+        email_sent = email_service.send_password_reset_email(
+            to_email=user.email,
+            reset_token=token,
+            username=username
+        )
+        
+        if email_sent:
+            logger.info(f"✅ Password reset email sent to {user.email}")
+            return {
+                "message": "Password reset link has been sent to your email",
+                "email": user.email
+            }
+        else:
+            logger.error(f"❌ Failed to send password reset email to {user.email}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to send email. Please try again later."
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Forgot password error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred. Please try again later."
+        )
+
+
+# ============================================================
+# 🔥🔥🔥 RESET PASSWORD - VALIDATE AND UPDATE 🔥🔥🔥
+# ============================================================
+
+@router.post("/reset-password")
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Reset password using token from email
+    
+    🔥 HII INATHIBITISHA TOKEN KUTOKA REDIS!
+    """
+    try:
+        # 🔥 Validate passwords match
+        if request.new_password != request.confirm_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Passwords do not match"
+            )
+        
+        # 🔥 Validate password strength
+        if len(request.new_password) < 6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password must be at least 6 characters"
+            )
+        
+        # 🔥 Get user ID from token (Redis)
+        user_id = redis_service.get_user_id_from_token(request.token)
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired reset token"
+            )
+        
+        # 🔥 Try to find user (Teacher first, then SuperAdmin)
+        user = db.query(Teacher).filter(Teacher.id == user_id).first()
+        is_superadmin = False
+        
+        if not user:
+            user = db.query(SuperAdmin).filter(SuperAdmin.id == user_id).first()
+            if user:
+                is_superadmin = True
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # 🔥 Update password
+        user.password_hash = get_password_hash(request.new_password)
+        user.updated_at = get_tz_now()
+        
+        # 🔥 Delete token from Redis (one-time use)
+        redis_service.delete_reset_token(request.token)
+        
+        db.commit()
+        
+        logger.info(f"✅ Password reset successful for user: {user.email}")
+        
+        return {
+            "message": "Password reset successful. You can now login with your new password."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Reset password error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred. Please try again later."
+        )
+
+
+# ============================================================
+# 🔥🔥🔥 VALIDATE RESET TOKEN 🔥🔥🔥
+# ============================================================
+
+@router.get("/validate-reset-token/{token}")
+async def validate_reset_token(token: str):
+    """
+    Validate if a reset token is still valid (for frontend)
+    """
+    user_id = redis_service.get_user_id_from_token(token)
+    
+    if user_id:
+        return {"valid": True, "user_id": user_id}
+    else:
+        return {"valid": False, "message": "Invalid or expired token"}
 
 
 # ============================================================

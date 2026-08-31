@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# 🔥 CONFIGURATION CLASS - PRO MAX VERSION 3.0
+# 🔥 CONFIGURATION CLASS - PRO MAX VERSION 4.0
 # ============================================================
 
 class Settings(BaseSettings):
@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     # 🔥 CORS SETTINGS - FIXED!
     # ============================================================
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com",
+        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com,https://www.bubblesmanage.com,https://fast-results-frontend.vercel.app",
         description="Allowed CORS origins (comma separated)"
     )
     
@@ -137,31 +137,64 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥 EMAIL SETTINGS (Optional)
+    # 🔥🔥🔥 EMAIL SETTINGS - MAILTRAP (ZILE ZILE ZA POS!) 🔥🔥🔥
     # ============================================================
-    SMTP_HOST: Optional[str] = Field(
-        default=None,
+    MAIL_SERVER: str = Field(
+        default="live.smtp.mailtrap.io",
         description="SMTP server host"
     )
-    SMTP_PORT: Optional[int] = Field(
+    MAIL_PORT: int = Field(
         default=587,
         description="SMTP server port"
     )
-    SMTP_USER: Optional[str] = Field(
-        default=None,
+    MAIL_USERNAME: str = Field(
+        default="api",
         description="SMTP username"
     )
-    SMTP_PASSWORD: Optional[str] = Field(
-        default=None,
+    MAIL_PASSWORD: str = Field(
+        default="811496902a46029b831bac1d6afe5c74",
         description="SMTP password"
     )
-    SMTP_FROM_EMAIL: Optional[str] = Field(
-        default=None,
-        description="From email address"
-    )
-    SMTP_USE_TLS: bool = Field(
+    MAIL_USE_TLS: bool = Field(
         default=True,
         description="Use TLS for SMTP"
+    )
+    MAIL_USE_SSL: bool = Field(
+        default=False,
+        description="Use SSL for SMTP"
+    )
+    MAIL_DEFAULT_SENDER: str = Field(
+        default="noreply@bubblesmanage.com",
+        description="Default from email address"
+    )
+    
+    MAILTRAP_API_TOKEN: str = Field(
+        default="811496902a46029b831bac1d6afe5c74",
+        description="Mailtrap API token"
+    )
+    MAILTRAP_FROM_EMAIL: str = Field(
+        default="noreply@bubblesmanage.com",
+        description="Mailtrap from email"
+    )
+    MAILTRAP_FROM_NAME: str = Field(
+        default="MASI FAST RESULTS",
+        description="Mailtrap from name"
+    )
+    
+    # ============================================================
+    # 🔥🔥🔥 REDIS SETTINGS (ZILE ZILE ZA POS!) 🔥🔥🔥
+    # ============================================================
+    REDIS_URL: str = Field(
+        default="rediss://default:gQAAAAAAAfG3AAIgcDE0OWNjZDE2NGY2YjM0YjM4ODVhZDJhMmFiNGZhOGI3Yg@correct-mule-127415.upstash.io:6379",
+        description="Redis URL for caching and tokens"
+    )
+    REDIS_CACHE_TTL: int = Field(
+        default=3600,
+        description="Cache TTL in seconds (1 hour)"
+    )
+    REDIS_RESET_TOKEN_TTL: int = Field(
+        default=3600,
+        description="Reset token TTL in seconds (1 hour)"
     )
     
     # ============================================================
@@ -182,18 +215,6 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = Field(
         default=0.7,
         description="OpenAI temperature"
-    )
-    
-    # ============================================================
-    # 🔥 REDIS SETTINGS (Optional - for caching)
-    # ============================================================
-    REDIS_URL: Optional[str] = Field(
-        default=None,
-        description="Redis URL for caching"
-    )
-    REDIS_CACHE_TTL: int = Field(
-        default=300,
-        description="Cache TTL in seconds"
     )
     
     # ============================================================
@@ -225,7 +246,7 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥 PAYMENT SETTINGS (Optional)
+    # 🔥 PAYMENT SETTINGS (Optional - Kwa sasa hatuitumii)
     # ============================================================
     CLICKPESA_API_KEY: Optional[str] = Field(
         default=None,
@@ -297,7 +318,6 @@ class Settings(BaseSettings):
     def validate_database_url(cls, v: str) -> str:
         """Ensure database URL is set"""
         if not v or v == "postgresql://user:password@localhost:5432/dbname":
-            # Don't raise error in development (use default SQLite or similar)
             env = os.getenv("APP_ENVIRONMENT", "development")
             if env == "production":
                 raise ValueError("DATABASE_URL must be set in production!")
@@ -309,6 +329,14 @@ class Settings(BaseSettings):
         """Parse allowed origins - always return string"""
         if isinstance(v, list):
             return ",".join(v)
+        return v
+    
+    @field_validator("REDIS_URL")
+    @classmethod
+    def validate_redis_url(cls, v: Optional[str]) -> Optional[str]:
+        """Validate Redis URL"""
+        if v and not v.startswith(("redis://", "rediss://")):
+            raise ValueError("REDIS_URL must start with redis:// or rediss://")
         return v
     
     # ============================================================
@@ -340,6 +368,20 @@ class Settings(BaseSettings):
     def allowed_extensions_list(self) -> List[str]:
         """Get allowed extensions as list"""
         return [ext.strip() for ext in self.ALLOWED_EXTENSIONS.split(",") if ext.strip()]
+    
+    @property
+    def is_redis_enabled(self) -> bool:
+        """Check if Redis is enabled"""
+        return self.REDIS_URL is not None and self.REDIS_URL != ""
+    
+    @property
+    def is_email_enabled(self) -> bool:
+        """Check if email is enabled"""
+        return (
+            self.MAIL_SERVER is not None and
+            self.MAIL_USERNAME is not None and
+            self.MAIL_PASSWORD is not None
+        )
     
     # ============================================================
     # 🔥 PYDANTIC V2 CONFIG
@@ -387,4 +429,18 @@ if __name__ == "__main__":
     print(f"DATABASE_URL: {settings.DATABASE_URL[:30]}...")
     print(f"FRONTEND_URL: {settings.FRONTEND_URL}")
     print(f"CORS Origins: {settings.cors_origins}")
+    print("-" * 60)
+    print("🔐 EMAIL Settings:")
+    print(f"  MAIL_SERVER: {settings.MAIL_SERVER}")
+    print(f"  MAIL_PORT: {settings.MAIL_PORT}")
+    print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}")
+    print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}")
+    print(f"  MAILTRAP_FROM_NAME: {settings.MAILTRAP_FROM_NAME}")
+    print(f"  Email Enabled: {settings.is_email_enabled}")
+    print("-" * 60)
+    print("📦 REDIS Settings:")
+    print(f"  REDIS_URL: {settings.REDIS_URL[:40]}...")
+    print(f"  REDIS_CACHE_TTL: {settings.REDIS_CACHE_TTL}s")
+    print(f"  REDIS_RESET_TOKEN_TTL: {settings.REDIS_RESET_TOKEN_TTL}s")
+    print(f"  Redis Enabled: {settings.is_redis_enabled}")
     print("=" * 60)
