@@ -11,7 +11,6 @@ import logging
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token, get_current_user, get_password_hash
 from app.core.email import email_service
-from app.core.redis import redis_service
 from app.models.teacher import Teacher
 from app.models.superadmin import SuperAdmin
 from app.models.school import School, SchoolStatus
@@ -29,7 +28,7 @@ def get_tz_now():
 
 
 # ================================
-# 🔥 PYDANTIC SCHEMAS - NEW!
+# 🔥 PYDANTIC SCHEMAS
 # ================================
 
 class LoginRequest(BaseModel):
@@ -666,7 +665,7 @@ def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
 
 
 # ============================================================
-# 🔥🔥🔥 FORGOT PASSWORD - SEND RESET EMAIL 🔥🔥🔥
+# 🔥🔥🔥 FORGOT PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
 # ============================================================
 
 @router.post("/forgot-password")
@@ -677,7 +676,8 @@ async def forgot_password(
     """
     Send password reset email to user
     
-    🔥 HII INATUMIA MAILTRAP + REDIS!
+    🔥 REDIS IMETENGWA KABISA! HAKUNA HUSIANO NA REDIS!
+    Token inahifadhiwa kwenye DATABASE (Teacher/User model)
     """
     try:
         # 🔥 Find user by email (Teacher or SuperAdmin)
@@ -706,8 +706,10 @@ async def forgot_password(
         # 🔥 Generate reset token
         token = secrets.token_urlsafe(32)
         
-        # 🔥 Store token in Redis (expires in 1 hour)
-        redis_service.set_reset_token(token, user.id, expire=3600)
+        # 🔥🔥🔥 HAPA NDIO TOKEN INAHIFADHIWA KWENYE DATABASE (SI REDIS!) 🔥🔥🔥
+        user.reset_token = token
+        user.reset_token_expires = get_tz_now() + timedelta(hours=1)
+        db.commit()
         
         # 🔥 Get username
         username = user.name or user.username or "User"
@@ -743,7 +745,7 @@ async def forgot_password(
 
 
 # ============================================================
-# 🔥🔥🔥 RESET PASSWORD - VALIDATE AND UPDATE 🔥🔥🔥
+# 🔥🔥🔥 RESET PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
 # ============================================================
 
 @router.post("/reset-password")
@@ -754,7 +756,7 @@ async def reset_password(
     """
     Reset password using token from email
     
-    🔥 HII INATHIBITISHA TOKEN KUTOKA REDIS!
+    🔥 REDIS IMETENGWA KABISA! Token inathibitishwa kutoka DATABASE!
     """
     try:
         # 🔥 Validate passwords match
@@ -771,36 +773,32 @@ async def reset_password(
                 detail="Password must be at least 6 characters"
             )
         
-        # 🔥 Get user ID from token (Redis)
-        user_id = redis_service.get_user_id_from_token(request.token)
+        # 🔥🔥🔥 HAPA TOKEN INATHIBITISHWA KUTOKA DATABASE (SI REDIS!) 🔥🔥🔥
+        # Find user by token
+        user = db.query(Teacher).filter(
+            Teacher.reset_token == request.token,
+            Teacher.reset_token_expires > get_tz_now()
+        ).first()
         
-        if not user_id:
+        if not user:
+            user = db.query(SuperAdmin).filter(
+                SuperAdmin.reset_token == request.token,
+                SuperAdmin.reset_token_expires > get_tz_now()
+            ).first()
+        
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired reset token"
-            )
-        
-        # 🔥 Try to find user (Teacher first, then SuperAdmin)
-        user = db.query(Teacher).filter(Teacher.id == user_id).first()
-        is_superadmin = False
-        
-        if not user:
-            user = db.query(SuperAdmin).filter(SuperAdmin.id == user_id).first()
-            if user:
-                is_superadmin = True
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
             )
         
         # 🔥 Update password
         user.password_hash = get_password_hash(request.new_password)
         user.updated_at = get_tz_now()
         
-        # 🔥 Delete token from Redis (one-time use)
-        redis_service.delete_reset_token(request.token)
+        # 🔥 Clear reset token (one-time use)
+        user.reset_token = None
+        user.reset_token_expires = None
         
         db.commit()
         
@@ -821,18 +819,33 @@ async def reset_password(
 
 
 # ============================================================
-# 🔥🔥🔥 VALIDATE RESET TOKEN 🔥🔥🔥
+# 🔥🔥🔥 VALIDATE RESET TOKEN - REDIS IMETENGWA! 🔥🔥🔥
 # ============================================================
 
 @router.get("/validate-reset-token/{token}")
-async def validate_reset_token(token: str):
+async def validate_reset_token(
+    token: str,
+    db: Session = Depends(get_db)
+):
     """
     Validate if a reset token is still valid (for frontend)
-    """
-    user_id = redis_service.get_user_id_from_token(token)
     
-    if user_id:
-        return {"valid": True, "user_id": user_id}
+    🔥 REDIS IMETENGWA KABISA! Token inathibitishwa kutoka DATABASE!
+    """
+    # 🔥 Angalia kwenye database
+    user = db.query(Teacher).filter(
+        Teacher.reset_token == token,
+        Teacher.reset_token_expires > get_tz_now()
+    ).first()
+    
+    if not user:
+        user = db.query(SuperAdmin).filter(
+            SuperAdmin.reset_token == token,
+            SuperAdmin.reset_token_expires > get_tz_now()
+        ).first()
+    
+    if user:
+        return {"valid": True, "user_id": user.id}
     else:
         return {"valid": False, "message": "Invalid or expired token"}
 

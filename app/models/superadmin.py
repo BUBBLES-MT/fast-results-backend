@@ -3,9 +3,18 @@ from sqlalchemy.sql import func
 from app.core.database import Base
 from datetime import datetime
 from passlib.context import CryptContext
+import pytz
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Tanzania timezone
+TZ = pytz.timezone("Africa/Dar_es_Salaam")
+
+def get_tz_now():
+    """Get current time in Tanzania timezone (UTC+3)"""
+    return datetime.now(TZ)
+
 
 class SuperAdmin(Base):
     __tablename__ = "superadmins"
@@ -25,6 +34,12 @@ class SuperAdmin(Base):
     is_active = Column(Boolean, default=True)
     is_superadmin = Column(Boolean, default=True)
     is_system_admin = Column(Boolean, default=False)
+
+    # ============================================================
+    # 🔥🔥🔥 RESET PASSWORD TOKEN FIELDS (NEW!) 🔥🔥🔥
+    # ============================================================
+    reset_token = Column(String(255), nullable=True, index=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
 
     # ==============================
     # 🔹 Metadata
@@ -46,6 +61,27 @@ class SuperAdmin(Base):
         """Verify password correctness."""
         return pwd_context.verify(password.strip(), self.password_hash)
 
+    # ============================================================
+    # 🔹 RESET PASSWORD HELPER METHODS (NEW!)
+    # ============================================================
+    def set_reset_token(self, token: str, expires_in_hours: int = 1) -> None:
+        """Set reset token with expiration"""
+        self.reset_token = token
+        self.reset_token_expires = get_tz_now() + timedelta(hours=expires_in_hours)
+
+    def is_reset_token_valid(self, token: str) -> bool:
+        """Check if reset token is valid"""
+        return (
+            self.reset_token == token and
+            self.reset_token_expires is not None and
+            self.reset_token_expires > get_tz_now()
+        )
+
+    def clear_reset_token(self) -> None:
+        """Clear reset token after use"""
+        self.reset_token = None
+        self.reset_token_expires = None
+
     # ==============================
     # 🔹 Convenience Methods
     # ==============================
@@ -64,4 +100,3 @@ class SuperAdmin(Base):
 
     def __repr__(self):
         return f"<SuperAdmin {self.username}>"
-    

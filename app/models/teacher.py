@@ -60,6 +60,12 @@ class Teacher(Base):
     # 🔥 Can this teacher login?
     active = Column(Boolean, default=False)
     
+    # ============================================================
+    # 🔥🔥🔥 RESET PASSWORD TOKEN FIELDS (NEW!) 🔥🔥🔥
+    # ============================================================
+    reset_token = Column(String(255), nullable=True, index=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
+    
     # ==========================
     # Timestamps
     # ==========================
@@ -178,6 +184,33 @@ class Teacher(Base):
         self.status = "active"
         self.active = True
     
+    # ============================================================
+    # 🔥 RESET PASSWORD HELPER METHODS (NEW!)
+    # ============================================================
+    def set_reset_token(self, token: str, expires_in_hours: int = 1) -> None:
+        """Set reset token with expiration"""
+        from datetime import datetime, timedelta
+        import pytz
+        tz = pytz.timezone("Africa/Dar_es_Salaam")
+        self.reset_token = token
+        self.reset_token_expires = datetime.now(tz) + timedelta(hours=expires_in_hours)
+    
+    def is_reset_token_valid(self, token: str) -> bool:
+        """Check if reset token is valid"""
+        from datetime import datetime
+        import pytz
+        tz = pytz.timezone("Africa/Dar_es_Salaam")
+        return (
+            self.reset_token == token and
+            self.reset_token_expires is not None and
+            self.reset_token_expires > datetime.now(tz)
+        )
+    
+    def clear_reset_token(self) -> None:
+        """Clear reset token after use"""
+        self.reset_token = None
+        self.reset_token_expires = None
+    
     # ==========================
     # Representation
     # ==========================
@@ -202,5 +235,7 @@ class Teacher(Base):
             "rejection_reason": self.rejection_reason,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "previous_school_id": self.previous_school_id,
-            "transferred_at": self.transferred_at.isoformat() if self.transferred_at else None
+            "transferred_at": self.transferred_at.isoformat() if self.transferred_at else None,
+            "reset_token": self.reset_token,  # 🔥 NEW!
+            "reset_token_expires": self.reset_token_expires.isoformat() if self.reset_token_expires else None  # 🔥 NEW!
         }
