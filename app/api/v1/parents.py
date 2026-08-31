@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
+import logging
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
-from app.core.security import get_current_user, create_access_token
+from app.core.security import get_current_user, create_access_token, get_password_hash
+from app.core.email import email_service
+from app.core.config import settings
 from app.models.parent import Parent
 from app.models.parent_child import ParentChild
 from app.models.student import Student
@@ -13,6 +17,12 @@ from app.models.school_class import SchoolClass
 from app.models.stream import Stream
 from app.models.subject import Subject
 from app.models.mark import Mark
+
+# ============================================================
+# 🔥 LOGGER - IMEONGEZWA!
+# ============================================================
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/parents", tags=["Parents"])
 
@@ -60,7 +70,7 @@ class ChildResponse(BaseModel):
     class_name: str
     stream_name: Optional[str]
     school_name: Optional[str] = None
-    school_id: Optional[int] = None  # 🔥 ONGEZA HII
+    school_id: Optional[int] = None
     relationship: str
     is_active: bool
 
@@ -86,7 +96,20 @@ class ParentDashboardResponse(BaseModel):
     total_children: int
 
 # ============================================================
-# 🔥 HELPER FUNCTIONS (Kwa grades) - PRIMARY
+# 🔥 FORGOT PASSWORD SCHEMAS
+# ============================================================
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str
+
+
+# ============================================================
+# 🔥 HELPER FUNCTIONS - GRADING
 # ============================================================
 
 def calculate_primary_grade(score: float) -> str:
@@ -102,10 +125,6 @@ def calculate_primary_grade(score: float) -> str:
     else:
         return "E"
 
-
-# ============================================================
-# 🔥 HELPER FUNCTIONS (Kwa grades) - SECONDARY
-# ============================================================
 
 def calculate_secondary_grade(score: float) -> tuple:
     """Calculate grade for SECONDARY school (0-100 scale)"""
@@ -141,10 +160,6 @@ def calculate_division(points_sum: int, subject_count: int) -> str:
         return "N/A"
 
 
-# ============================================================
-# 🔥 GRADE CALCULATOR - INACHAKUA KULINGANA NA SHULE
-# ============================================================
-
 def calculate_grade(score: float, school_level: str = "secondary") -> tuple:
     """Calculate grade based on school level"""
     if school_level == "primary":
@@ -153,12 +168,35 @@ def calculate_grade(score: float, school_level: str = "secondary") -> tuple:
         return calculate_secondary_grade(score)
 
 
+def calculate_division_from_grade(grade: str) -> str:
+    """Convert grade to division"""
+    grade_map = {"A": "I", "B": "II", "C": "III", "D": "IV", "F": "O"}
+    return grade_map.get(grade, "N/A")
+
+
+def calculate_best_7_average(scores: List[float]) -> tuple:
+    """Calculate average of best 7 subjects for SECONDARY"""
+    if not scores:
+        return 0, 0, "N/A", "N/A"
+    
+    top_7 = sorted(scores, reverse=True)[:7]
+    avg_best_7 = sum(top_7) / 7
+    points_sum = 0
+    for score in top_7:
+        _, points = calculate_secondary_grade(score)
+        points_sum += points
+    
+    grade, _ = calculate_secondary_grade(avg_best_7)
+    division = calculate_division(points_sum, 7)
+    
+    return round(avg_best_7, 2), points_sum, grade, division
+
+
 # ============================================================
-# 🔥 REMARKS FUNCTIONS - PRIMARY (KISWAHILI)
+# 🔥 REMARKS FUNCTIONS - KISWAHILI
 # ============================================================
 
 def get_primary_teacher_remarks(grade: str, average: float) -> str:
-    """Generate teacher remarks for PRIMARY school - KISWAHILI"""
     if grade == "A":
         return f"Amefanya vizuri sana! Wastani {average:.1f}%. Endelea kusoma kwa bidii."
     elif grade == "B":
@@ -172,7 +210,6 @@ def get_primary_teacher_remarks(grade: str, average: float) -> str:
 
 
 def get_primary_headmaster_remarks(grade: str, average: float) -> str:
-    """Generate headmaster remarks for PRIMARY school - KISWAHILI"""
     if grade == "A":
         return f"Hongera kwa utendaji bora. Mtoto ana uwezo mkubwa. Wastani {average:.1f}%."
     elif grade == "B":
@@ -185,61 +222,43 @@ def get_primary_headmaster_remarks(grade: str, average: float) -> str:
         return f"Haijaridhisha. Tunatoa wito kwa mzazi kushirikiana na shule. Wastani {average:.1f}%."
 
 
-# ============================================================
-# 🔥 REMARKS FUNCTIONS - SECONDARY (KISWAHILI)
-# ============================================================
-
 def get_secondary_teacher_remarks(division: str, average: float) -> str:
-    """Generate teacher remarks for SECONDARY school - KISWAHILI"""
     if division == "I":
         return ("Amefaulu vizuri sana! Ana uwezo mkubwa wa kitaaluma. "
-                "Aendelee kuhifadhi na kuboresha utendaji wake. "
-                "Anapendekezwa kusoma masomo ya sayansi na hisabati kwa kina zaidi.")
+                "Aendelee kuhifadhi na kuboresha utendaji wake.")
     elif division == "II":
         return ("Amefanya vizuri. Ana msingi mzuri wa kitaaluma. "
-                "Anahitaji kuongeza juhudi katika masomo anayodhoofika "
-                "ili kufikia Daraja la Kwanza katika mitihani ijayo.")
+                "Anahitaji kuongeza juhudi katika masomo anayodhoofika.")
     elif division == "III":
         return ("Wastani wa kuridhisha. Anaweza kufanya vizuri zaidi kwa "
-                "kuongeza muda wa kusoma na kufanya marudio ya kutosha. "
-                "Anahitaji mwongozo kutoka kwa walimu na wazazi.")
+                "kuongeza muda wa kusoma na kufanya marudio ya kutosha.")
     elif division == "IV":
         return ("Ana hitaji msaada zaidi kitaaluma. Anapaswa kufanya kazi "
-                "kwa bidii, kuhudhuria masomo ya ziada, na kuomba ushauri "
-                "kutoka kwa walimu. Wazazi wanashirikiane na shule.")
+                "kwa bidii na kuhudhuria masomo ya ziada.")
     else:
         return ("Haijaweza kufikia matarajio. Anahitaji kuwa makini zaidi "
-                "na masomo yake. Anapaswa kushirikiana na wazazi na walimu "
-                "kuboresha tabia na utendaji.")
+                "na masomo yake.")
 
 
 def get_secondary_headmaster_remarks(division: str, average: float) -> str:
-    """Generate headmaster remarks for SECONDARY school - KISWAHILI"""
     if division == "I":
         return ("Hongera kwa utendaji bora. Mtoto ana uwezo wa kuwa kwenye "
-                "ngazi za juu kitaaluma. Tunamshauri aendelee kwa kasi hiyo hiyo. "
-                "Shule inajivunia utendaji wake.")
+                "ngazi za juu kitaaluma. Tunamshauri aendelee kwa kasi hiyo.")
     elif division == "II":
         return ("Utendaji mzuri. Tunamshauri kuongeza bidii zaidi ili kufikia "
-                "Daraja la Kwanza katika mitihani ijayo. Endelea kusoma kwa bidii.")
+                "Daraja la Kwanza katika mitihani ijayo.")
     elif division == "III":
         return ("Wastani wa kuridhisha. Tunamshauri kufanya marudio makini na "
-                "kuhudhuria masomo yote kwa umakini. Ana uwezo wa kuongeza daraja.")
+                "kuhudhuria masomo yote kwa umakini.")
     elif division == "IV":
         return ("Haijatosheleza. Tunawashauri wazazi kufuatilia kwa karibu "
-                "maendeleo ya mtoto na kushirikiana na shule. Mtoto anahitaji "
-                "msaada zaidi nyumbani.")
+                "maendeleo ya mtoto na kushirikiana na shule.")
     else:
         return ("Haijaridhisha. Tunatoa wito kwa mzazi/mlezi kushirikiana na "
-                "shule kumsaidia mtoto kuboresha tabia na utendaji wake kitaaluma.")
+                "shule kumsaidia mtoto kuboresha tabia na utendaji wake.")
 
-
-# ============================================================
-# 🔥 REMARKS - AUTO SELECT KULINGANA NA SHULE
-# ============================================================
 
 def get_teacher_remarks(grade: str, average: float, school_level: str) -> str:
-    """Auto-select teacher remarks based on school level"""
     if school_level == "primary":
         return get_primary_teacher_remarks(grade, average)
     else:
@@ -248,7 +267,6 @@ def get_teacher_remarks(grade: str, average: float, school_level: str) -> str:
 
 
 def get_headmaster_remarks(grade: str, average: float, school_level: str) -> str:
-    """Auto-select headmaster remarks based on school level"""
     if school_level == "primary":
         return get_primary_headmaster_remarks(grade, average)
     else:
@@ -256,41 +274,150 @@ def get_headmaster_remarks(grade: str, average: float, school_level: str) -> str
         return get_secondary_headmaster_remarks(division, average)
 
 
-def calculate_division_from_grade(grade: str) -> str:
-    """Convert grade to division"""
-    grade_map = {"A": "I", "B": "II", "C": "III", "D": "IV", "F": "O"}
-    return grade_map.get(grade, "N/A")
-
-
 # ============================================================
-# 🔥 CALCULATE BEST 7 SUBJECTS AVERAGE - SECONDARY
+# 🔥 HELPER FUNCTIONS - POSITION CALCULATIONS
 # ============================================================
 
-def calculate_best_7_average(scores: List[float]) -> tuple:
-    """
-    Calculate average of best 7 subjects for SECONDARY
-    Returns: (average_of_best_7, points_sum, grade, division)
-    """
-    if not scores:
-        return 0, 0, "N/A", "N/A"
+def calculate_term_subject_position_fast(db, student_id, subject_id, exam_a, exam_b, all_class_student_ids):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return 1
     
-    # 🔥 CHUKUA BEST 7 SUBJECTS
-    top_7 = sorted(scores, reverse=True)[:7]
+    marks = db.query(Mark).filter(
+        Mark.subject_id == subject_id,
+        Mark.exam_type.in_([exam_a, exam_b]),
+        Mark.student_id.in_(all_class_student_ids)
+    ).all()
     
-    # 🔥 HESABU WASTANI WA BEST 7 (GAWANYA KWA 7)
-    avg_best_7 = sum(top_7) / 7
+    student_marks = {}
+    for mark in marks:
+        if mark.student_id not in student_marks:
+            student_marks[mark.student_id] = []
+        student_marks[mark.student_id].append(mark.score)
     
-    # 🔥 HESABU POINTS KWA BEST 7
-    points_sum = 0
-    for score in top_7:
-        _, points = calculate_secondary_grade(score)
-        points_sum += points
+    subject_scores = []
+    for s_id in all_class_student_ids:
+        if s_id in student_marks and student_marks[s_id]:
+            avg_score = sum(student_marks[s_id]) / len(student_marks[s_id])
+            subject_scores.append((s_id, avg_score))
     
-    # 🔥 HESABU GRADE NA DIVISION
-    grade, _ = calculate_secondary_grade(avg_best_7)
-    division = calculate_division(points_sum, 7)
+    subject_scores.sort(key=lambda x: x[1], reverse=True)
+    position = 1
+    for idx, (s_id, _) in enumerate(subject_scores, 1):
+        if s_id == student_id:
+            position = idx
+            break
     
-    return round(avg_best_7, 2), points_sum, grade, division
+    return position
+
+
+def calculate_term_overall_position_fast(db, student_id, exam_a, exam_b, all_class_student_ids, school_level):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return 1
+    
+    all_marks = db.query(Mark).filter(
+        Mark.exam_type.in_([exam_a, exam_b]),
+        Mark.student_id.in_(all_class_student_ids)
+    ).all()
+    
+    student_marks = {}
+    for mark in all_marks:
+        if mark.student_id not in student_marks:
+            student_marks[mark.student_id] = []
+        student_marks[mark.student_id].append(mark.score)
+    
+    class_scores = []
+    for s_id in all_class_student_ids:
+        if s_id in student_marks and student_marks[s_id]:
+            scores = student_marks[s_id]
+            if school_level == "secondary":
+                top_scores = sorted(scores, reverse=True)[:7]
+                avg_best_7 = sum(top_scores) / 7
+                class_scores.append((s_id, avg_best_7))
+            else:
+                avg_score = sum(scores) / len(scores)
+                class_scores.append((s_id, avg_score))
+    
+    class_scores.sort(key=lambda x: x[1], reverse=True)
+    position = 1
+    for idx, (s_id, _) in enumerate(class_scores, 1):
+        if s_id == student_id:
+            position = idx
+            break
+    
+    return position
+
+
+def calculate_single_exam_position_fast(db, student_id, subject_id, exam_type, all_class_student_ids):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return 1
+    
+    marks = db.query(Mark).filter(
+        Mark.subject_id == subject_id,
+        Mark.exam_type == exam_type,
+        Mark.student_id.in_(all_class_student_ids)
+    ).all()
+    
+    student_marks = {}
+    for mark in marks:
+        if mark.student_id not in student_marks:
+            student_marks[mark.student_id] = []
+        student_marks[mark.student_id].append(mark.score)
+    
+    subject_scores = []
+    for s_id in all_class_student_ids:
+        if s_id in student_marks and student_marks[s_id]:
+            avg_score = sum(student_marks[s_id]) / len(student_marks[s_id])
+            subject_scores.append((s_id, avg_score))
+    
+    subject_scores.sort(key=lambda x: x[1], reverse=True)
+    position = 1
+    for idx, (s_id, _) in enumerate(subject_scores, 1):
+        if s_id == student_id:
+            position = idx
+            break
+    
+    return position
+
+
+def calculate_single_exam_overall_position_fast(db, student_id, exam_type, all_class_student_ids, school_level):
+    student = db.query(Student).filter(Student.id == student_id).first()
+    if not student:
+        return 1
+    
+    all_marks = db.query(Mark).filter(
+        Mark.exam_type == exam_type,
+        Mark.student_id.in_(all_class_student_ids)
+    ).all()
+    
+    student_marks = {}
+    for mark in all_marks:
+        if mark.student_id not in student_marks:
+            student_marks[mark.student_id] = []
+        student_marks[mark.student_id].append(mark.score)
+    
+    class_scores = []
+    for s_id in all_class_student_ids:
+        if s_id in student_marks and student_marks[s_id]:
+            scores = student_marks[s_id]
+            if school_level == "secondary":
+                top_scores = sorted(scores, reverse=True)[:7]
+                avg_best_7 = sum(top_scores) / 7
+                class_scores.append((s_id, avg_best_7))
+            else:
+                avg_score = sum(scores) / len(scores)
+                class_scores.append((s_id, avg_score))
+    
+    class_scores.sort(key=lambda x: x[1], reverse=True)
+    position = 1
+    for idx, (s_id, _) in enumerate(class_scores, 1):
+        if s_id == student_id:
+            position = idx
+            break
+    
+    return position
 
 
 # ============================================================
@@ -409,7 +536,6 @@ def get_public_classes(
     db: Session = Depends(get_db)
 ):
     """Get classes for a school - PUBLIC"""
-    
     query = db.query(SchoolClass).filter(SchoolClass.school_id == school_id)
     
     if school_level:
@@ -431,7 +557,6 @@ def get_public_streams(
     db: Session = Depends(get_db)
 ):
     """Get streams for a class - PUBLIC"""
-    
     query = db.query(Stream).filter(Stream.class_id == class_id)
     
     if school_level:
@@ -458,7 +583,6 @@ def get_public_students(
     db: Session = Depends(get_db)
 ):
     """Get students for a class - PUBLIC"""
-    
     school = db.query(School).filter(School.id == school_id).first()
     if not school:
         raise HTTPException(status_code=404, detail="School not found")
@@ -482,7 +606,6 @@ def get_public_students(
         query = query.filter(Student.roll_number.ilike(f"%{roll_number}%"))
     
     students = query.all()
-    
     result = []
     for s in students:
         class_obj = db.query(SchoolClass).filter(SchoolClass.id == s.class_id).first()
@@ -504,9 +627,7 @@ def get_public_schools(
     db: Session = Depends(get_db)
 ):
     """Get all schools - PUBLIC"""
-    
     query = db.query(School).filter(School.is_active == True)
-    
     if school_level:
         query = query.filter(School.school_level == school_level)
     
@@ -532,8 +653,7 @@ def register_child(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Link a child to a parent - Inaruhusu watoto kutoka shule yoyote"""
-    
+    """Link a child to a parent"""
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -581,7 +701,7 @@ def register_child(
 
 
 # ============================================================
-# 🔥 GET PARENT CHILDREN - ILIYOBORESHA (ONGEZA school_id)
+# 🔥 GET PARENT CHILDREN
 # ============================================================
 
 @router.get("/children", response_model=List[ChildResponse])
@@ -590,7 +710,6 @@ def get_parent_children(
     current_user = Depends(get_current_user)
 ):
     """Get all children linked to the current parent"""
-    
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -621,7 +740,7 @@ def get_parent_children(
             "class_name": class_obj.name if class_obj else "Unknown",
             "stream_name": stream_obj.name if stream_obj else "",
             "school_name": school_obj.name if school_obj else "Unknown",
-            "school_id": student.school_id,  # 🔥 HII NI MUHIMU KWA TANGAZO!
+            "school_id": student.school_id,
             "relationship": child.relationship,
             "is_active": child.is_active
         })
@@ -640,7 +759,6 @@ def remove_child(
     current_user = Depends(get_current_user)
 ):
     """Remove a child from parent's account"""
-    
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -659,7 +777,7 @@ def remove_child(
 
 
 # ============================================================
-# 🔥 GET CHILD INFORMATION - ILIYOBORESHA
+# 🔥 GET CHILD INFORMATION
 # ============================================================
 
 @router.get("/children/{student_id}/info")
@@ -669,7 +787,6 @@ def get_child_info(
     current_user = Depends(get_current_user)
 ):
     """Get student information for parent"""
-    
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -698,11 +815,12 @@ def get_child_info(
         "stream_name": stream_obj.name if stream_obj else "",
         "school_name": school.name if school else "Unknown",
         "school_level": school.school_level if school else "secondary",
-        "school_id": student.school_id  # 🔥 HII NI MUHIMU KWA TANGAZO!
+        "school_id": student.school_id
     }
 
+
 # ============================================================
-# 🔥 GET CHILD TERM RESULTS - KWA DARASA LOTE
+# 🔥 GET CHILD TERM RESULTS
 # ============================================================
 
 @router.get("/children/{student_id}/term-results")
@@ -713,12 +831,7 @@ def get_child_term_results(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get term results for a child (combined exams)
-    - Muhula I: MIDTERM3 + TERMINAL
-    - Muhula II: MIDTERM9 + ANNUAL
-    """
-    
+    """Get term results for a child (combined exams)"""
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -748,10 +861,7 @@ def get_child_term_results(
         exam_b = "TERMINAL"
         term_display = "I"
     
-    # 🔥 HESABU WANAFUNZI WOTE WA DARASA (BILA MKONDO)
-    all_class_students = db.query(Student).filter(
-        Student.class_id == student.class_id
-    ).all()
+    all_class_students = db.query(Student).filter(Student.class_id == student.class_id).all()
     all_class_student_ids = [s.id for s in all_class_students]
     total_students = len(all_class_student_ids)
     
@@ -774,7 +884,7 @@ def get_child_term_results(
         subject_marks[mark.subject_id][mark.exam_type] = mark.score
     
     results = []
-    all_scores = []  # 🔥 KUKUSANYA SCORES ZOTE
+    all_scores = []
     
     for sub_id, sub_name in subject_map.items():
         if sub_id in subject_marks:
@@ -785,9 +895,7 @@ def get_child_term_results(
                 scores = [s for s in [a_score, b_score] if s is not None]
                 jumla = sum(scores)
                 wastani = round(jumla / len(scores), 2)
-                
                 grade, _ = calculate_grade(wastani, school_level)
-                
                 subject_position = calculate_term_subject_position_fast(
                     db, student_id, sub_id, exam_a, exam_b, all_class_student_ids
                 )
@@ -803,17 +911,14 @@ def get_child_term_results(
                     "position": subject_position,
                     "total_students": total_students
                 })
-                
                 all_scores.append(wastani)
     
     results.sort(key=lambda x: x["subject_name"])
     
-    # 🔥 KWA SECONDARY - HESABU BEST 7 SUBJECTS
     if school_level == "secondary":
         best_7_avg, points_sum, grade, division = calculate_best_7_average(all_scores)
         overall_avg = best_7_avg
     else:
-        # PRIMARY - wastani wa masomo yote
         valid_subjects = len(results)
         if valid_subjects > 0:
             overall_avg = round(sum(all_scores) / valid_subjects, 2)
@@ -826,7 +931,6 @@ def get_child_term_results(
             points_sum = None
             division = None
     
-    # 🔥 CALCULATE OVERALL POSITION
     overall_position = calculate_term_overall_position_fast(
         db, student_id, exam_a, exam_b, all_class_student_ids, school_level
     )
@@ -877,10 +981,7 @@ def get_child_exam_results(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """
-    Get results for a specific exam type only (individual exam)
-    """
-    
+    """Get results for a specific exam type only"""
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -904,10 +1005,7 @@ def get_child_exam_results(
     if exam_type not in valid_exam_types:
         raise HTTPException(status_code=400, detail=f"Invalid exam type. Must be one of: {', '.join(valid_exam_types)}")
     
-    # 🔥 HESABU WANAFUNZI WOTE WA DARASA (BILA MKONDO)
-    all_class_students = db.query(Student).filter(
-        Student.class_id == student.class_id
-    ).all()
+    all_class_students = db.query(Student).filter(Student.class_id == student.class_id).all()
     all_class_student_ids = [s.id for s in all_class_students]
     total_students = len(all_class_student_ids)
     
@@ -924,12 +1022,11 @@ def get_child_exam_results(
     marks = query.all()
     
     results = []
-    all_scores = []  # 🔥 KWA SECONDARY - KUKUSANYA SCORES ZOTE
+    all_scores = []
     
     for mark in marks:
         sub_name = subject_map.get(mark.subject_id, "Unknown")
         grade, _ = calculate_grade(mark.score, school_level)
-        
         subject_position = calculate_single_exam_position_fast(
             db, student_id, mark.subject_id, exam_type, all_class_student_ids
         )
@@ -945,12 +1042,10 @@ def get_child_exam_results(
             "exam_type": mark.exam_type,
             "year": mark.year
         })
-        
-        all_scores.append(mark.score)  # 🔥 KUONGEZA KWENYE SCORES ZOTE
+        all_scores.append(mark.score)
     
     results.sort(key=lambda x: x["subject_name"])
     
-    # 🔥 KWA SECONDARY - HESABU BEST 7 SUBJECTS
     if school_level == "secondary":
         best_7_avg, points_sum, grade, division = calculate_best_7_average(all_scores)
         overall_avg = best_7_avg
@@ -967,7 +1062,6 @@ def get_child_exam_results(
             points_sum = None
             division = None
     
-    # 🔥 CALCULATE OVERALL POSITION (KWA BEST 7 KWA SECONDARY)
     overall_position = calculate_single_exam_overall_position_fast(
         db, student_id, exam_type, all_class_student_ids, school_level
     )
@@ -1004,170 +1098,6 @@ def get_child_exam_results(
 
 
 # ============================================================
-# 🔥 HELPER FUNCTIONS - POSITION CALCULATIONS (BEST 7 KWA SECONDARY)
-# ============================================================
-
-def calculate_term_subject_position_fast(db, student_id, subject_id, exam_a, exam_b, all_class_student_ids):
-    """Calculate position for a specific subject in term - KWA DARASA LOTE"""
-    
-    student = db.query(Student).filter(Student.id == student_id).first()
-    if not student:
-        return 1
-    
-    marks = db.query(Mark).filter(
-        Mark.subject_id == subject_id,
-        Mark.exam_type.in_([exam_a, exam_b]),
-        Mark.student_id.in_(all_class_student_ids)
-    ).all()
-    
-    student_marks = {}
-    for mark in marks:
-        if mark.student_id not in student_marks:
-            student_marks[mark.student_id] = []
-        student_marks[mark.student_id].append(mark.score)
-    
-    subject_scores = []
-    for s_id in all_class_student_ids:
-        if s_id in student_marks and student_marks[s_id]:
-            avg_score = sum(student_marks[s_id]) / len(student_marks[s_id])
-            subject_scores.append((s_id, avg_score))
-    
-    subject_scores.sort(key=lambda x: x[1], reverse=True)
-    position = 1
-    for idx, (s_id, _) in enumerate(subject_scores, 1):
-        if s_id == student_id:
-            position = idx
-            break
-    
-    return position
-
-
-def calculate_term_overall_position_fast(db, student_id, exam_a, exam_b, all_class_student_ids, school_level):
-    """Calculate overall position for a term - KWA DARASA LOTE (BEST 7 KWA SECONDARY)"""
-    
-    student = db.query(Student).filter(Student.id == student_id).first()
-    if not student:
-        return 1
-    
-    all_marks = db.query(Mark).filter(
-        Mark.exam_type.in_([exam_a, exam_b]),
-        Mark.student_id.in_(all_class_student_ids)
-    ).all()
-    
-    student_marks = {}
-    for mark in all_marks:
-        if mark.student_id not in student_marks:
-            student_marks[mark.student_id] = []
-        student_marks[mark.student_id].append(mark.score)
-    
-    class_scores = []
-    
-    for s_id in all_class_student_ids:
-        if s_id in student_marks and student_marks[s_id]:
-            scores = student_marks[s_id]
-            
-            if school_level == "secondary":
-                # 🔥 CHUKUA BEST 7 SUBJECTS
-                top_scores = sorted(scores, reverse=True)[:7]
-                # 🔥 HESABU WASTANI WA BEST 7 (GAWANYA KWA 7)
-                avg_best_7 = sum(top_scores) / 7
-                class_scores.append((s_id, avg_best_7))
-            else:
-                # PRIMARY - wastani wa masomo yote
-                avg_score = sum(scores) / len(scores)
-                class_scores.append((s_id, avg_score))
-    
-    # 🔥 PANGIA KWA WASTANI (descending - kubwa ni bora)
-    class_scores.sort(key=lambda x: x[1], reverse=True)
-    position = 1
-    for idx, (s_id, _) in enumerate(class_scores, 1):
-        if s_id == student_id:
-            position = idx
-            break
-    
-    return position
-
-
-def calculate_single_exam_position_fast(db, student_id, subject_id, exam_type, all_class_student_ids):
-    """Calculate position for a specific subject and exam type - KWA DARASA LOTE"""
-    
-    student = db.query(Student).filter(Student.id == student_id).first()
-    if not student:
-        return 1
-    
-    marks = db.query(Mark).filter(
-        Mark.subject_id == subject_id,
-        Mark.exam_type == exam_type,
-        Mark.student_id.in_(all_class_student_ids)
-    ).all()
-    
-    student_marks = {}
-    for mark in marks:
-        if mark.student_id not in student_marks:
-            student_marks[mark.student_id] = []
-        student_marks[mark.student_id].append(mark.score)
-    
-    subject_scores = []
-    for s_id in all_class_student_ids:
-        if s_id in student_marks and student_marks[s_id]:
-            avg_score = sum(student_marks[s_id]) / len(student_marks[s_id])
-            subject_scores.append((s_id, avg_score))
-    
-    subject_scores.sort(key=lambda x: x[1], reverse=True)
-    position = 1
-    for idx, (s_id, _) in enumerate(subject_scores, 1):
-        if s_id == student_id:
-            position = idx
-            break
-    
-    return position
-
-
-def calculate_single_exam_overall_position_fast(db, student_id, exam_type, all_class_student_ids, school_level):
-    """Calculate overall position for a specific exam type - KWA DARASA LOTE (BEST 7 KWA SECONDARY)"""
-    
-    student = db.query(Student).filter(Student.id == student_id).first()
-    if not student:
-        return 1
-    
-    all_marks = db.query(Mark).filter(
-        Mark.exam_type == exam_type,
-        Mark.student_id.in_(all_class_student_ids)
-    ).all()
-    
-    student_marks = {}
-    for mark in all_marks:
-        if mark.student_id not in student_marks:
-            student_marks[mark.student_id] = []
-        student_marks[mark.student_id].append(mark.score)
-    
-    class_scores = []
-    
-    for s_id in all_class_student_ids:
-        if s_id in student_marks and student_marks[s_id]:
-            scores = student_marks[s_id]
-            
-            if school_level == "secondary":
-                # 🔥 CHUKUA BEST 7 SUBJECTS
-                top_scores = sorted(scores, reverse=True)[:7]
-                # 🔥 HESABU WASTANI WA BEST 7 (GAWANYA KWA 7)
-                avg_best_7 = sum(top_scores) / 7
-                class_scores.append((s_id, avg_best_7))
-            else:
-                avg_score = sum(scores) / len(scores)
-                class_scores.append((s_id, avg_score))
-    
-    class_scores.sort(key=lambda x: x[1], reverse=True)
-    position = 1
-    for idx, (s_id, _) in enumerate(class_scores, 1):
-        if s_id == student_id:
-            position = idx
-            break
-    
-    return position
-
-
-# ============================================================
 # 🔥 GET PARENT DASHBOARD
 # ============================================================
 
@@ -1177,7 +1107,6 @@ def get_parent_dashboard(
     current_user = Depends(get_current_user)
 ):
     """Get parent dashboard with all children and their performance"""
-    
     if not hasattr(current_user, 'id'):
         raise HTTPException(status_code=403, detail="Not authorized")
     
@@ -1219,26 +1148,8 @@ def get_parent_dashboard(
     }
 
 
-
 # ============================================================
-# 🔥🔥🔥 PARENT FORGOT PASSWORD - IMEBORESHA! 🔥🔥🔥
-# ============================================================
-
-# ============================================================
-# 🔥 PYDANTIC SCHEMAS - Ongeza chini ya schemas zingine
-# ============================================================
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    new_password: str
-    confirm_password: str
-
-
-# ============================================================
-# 🔥 PARENT FORGOT PASSWORD - KISWAHILI!
+# 🔥🔥🔥 PARENT FORGOT PASSWORD 🔥🔥🔥
 # ============================================================
 
 @router.post("/forgot-password")
@@ -1250,7 +1161,6 @@ async def parent_forgot_password(
     Tuma kiungo cha kuweka upya nenosiri kwa mzazi
     """
     try:
-        # 🔥 Tafuta mzazi kwa barua pepe
         parent = db.query(Parent).filter(Parent.email == request.email).first()
         
         if not parent:
@@ -1259,25 +1169,20 @@ async def parent_forgot_password(
                 "message": "Kama barua pepe yako imesajiliwa, utapokea kiungo cha kuweka upya nenosiri"
             }
         
-        # 🔥 Angalia kama mzazi yuko active
         if not parent.is_active:
             logger.warning(f"⚠️ Password reset requested for inactive parent: {request.email}")
             return {
                 "message": "Kama barua pepe yako imesajiliwa, utapokea kiungo cha kuweka upya nenosiri"
             }
         
-        # 🔥 Generate token
         token = secrets.token_urlsafe(32)
         
-        # 🔥 Hifadhi token kwenye database
         parent.reset_token = token
         parent.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
         db.commit()
         
-        # 🔥 Pata jina la mzazi
         username = parent.name or parent.username or "Mzazi"
         
-        # 🔥 Tuma email - LINK YA PARENT RESET PAGE!
         reset_link = f"{settings.FRONTEND_URL}/parent/reset-password?token={token}"
         
         email_sent = email_service.send_password_reset_email(
@@ -1311,7 +1216,7 @@ async def parent_forgot_password(
 
 
 # ============================================================
-# 🔥 PARENT RESET PASSWORD - KISWAHILI!
+# 🔥 PARENT RESET PASSWORD
 # ============================================================
 
 @router.post("/reset-password")
@@ -1323,21 +1228,18 @@ async def parent_reset_password(
     Weka upya nenosiri la mzazi kwa kutumia tokeni
     """
     try:
-        # 🔥 Hakikisha manenosiri yanafanana
         if request.new_password != request.confirm_password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Manenosiri hayafanani"
             )
         
-        # 🔥 Hakikisha nenosiri lina herufi 6+
         if len(request.new_password) < 6:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Nenosiri lazima iwe na herufi 6 au zaidi"
             )
         
-        # 🔥 Tafuta mzazi kwa tokeni
         parent = db.query(Parent).filter(
             Parent.reset_token == request.token,
             Parent.reset_token_expires > datetime.utcnow()
@@ -1349,11 +1251,9 @@ async def parent_reset_password(
                 detail="Kiungo batili au kimeisha muda wake"
             )
         
-        # 🔥 Badilisha nenosiri
         parent.password_hash = get_password_hash(request.new_password)
         parent.updated_at = datetime.utcnow()
         
-        # 🔥 Futa tokeni (one-time use)
         parent.reset_token = None
         parent.reset_token_expires = None
         
@@ -1376,7 +1276,7 @@ async def parent_reset_password(
 
 
 # ============================================================
-# 🔥 PARENT VALIDATE RESET TOKEN - KISWAHILI!
+# 🔥 PARENT VALIDATE RESET TOKEN
 # ============================================================
 
 @router.get("/validate-reset-token/{token}")
