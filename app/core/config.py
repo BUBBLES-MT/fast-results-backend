@@ -137,61 +137,61 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥🔥🔥 EMAIL SETTINGS - MAILTRAP (ZILE ZILE ZA POS!) 🔥🔥🔥
+    # 🔥🔥🔥 EMAIL SETTINGS - KAMA POS HASA! 🔥🔥🔥
     # ============================================================
+    # ===== MAILTRAP SMTP (Kama POS!) =====
     MAIL_SERVER: str = Field(
-        default="live.smtp.mailtrap.io",
+        default="live.smtp.mailtrap.io",  # ✅ KAMA POS!
         description="SMTP server host"
     )
     MAIL_PORT: int = Field(
-        default=587,
+        default=587,  # ✅ KAMA POS!
         description="SMTP server port"
     )
     MAIL_USERNAME: str = Field(
-        default="api",
+        default="api",  # ✅ KAMA POS!
         description="SMTP username"
     )
     MAIL_PASSWORD: str = Field(
-        default="811496902a46029b831bac1d6afe5c74",
+        default="811496902a46029b831bac1d6afe5c74",  # ✅ KAMA POS!
         description="SMTP password"
     )
     MAIL_USE_TLS: bool = Field(
-        default=True,
+        default=True,  # ✅ KAMA POS!
         description="Use TLS for SMTP"
     )
     MAIL_USE_SSL: bool = Field(
-        default=False,
+        default=False,  # ✅ KAMA POS!
         description="Use SSL for SMTP"
     )
     MAIL_DEFAULT_SENDER: str = Field(
-        default="noreply@bubblesmanage.com",
+        default="noreply@bubblesmanage.com",  # ✅ KAMA POS!
         description="Default from email address"
     )
     
+    # ===== MAILTRAP API (Kama POS!) =====
     MAILTRAP_API_TOKEN: str = Field(
-        default="811496902a46029b831bac1d6afe5c74",
+        default="811496902a46029b831bac1d6afe5c74",  # ✅ KAMA POS!
         description="Mailtrap API token"
     )
     MAILTRAP_FROM_EMAIL: str = Field(
-        default="noreply@bubblesmanage.com",
+        default="noreply@bubblesmanage.com",  # ✅ KAMA POS!
         description="Mailtrap from email"
     )
     MAILTRAP_FROM_NAME: str = Field(
-        default="MASI FAST RESULTS",
+        default="MASI FAST RESULTS",  # ✅ KAMA POS! (Badilisha brand name)
         description="Mailtrap from name"
     )
-    
-    # 🔥🔥🔥 NEW - MAILTRAP ENABLED 🔥🔥🔥
     MAILTRAP_ENABLED: bool = Field(
-        default=True,
+        default=True,  # ✅ KAMA POS!
         description="Enable Mailtrap API for sending emails"
     )
     
     # ============================================================
-    # 🔥🔥🔥 REDIS SETTINGS (ZILE ZILE ZA POS!) 🔥🔥🔥
+    # 🔥🔥🔥 REDIS SETTINGS (KAMA POS HASA!) 🔥🔥🔥
     # ============================================================
     REDIS_URL: str = Field(
-        default="rediss://default:gQAAAAAAAfG3AAIgcDE0OWNjZDE2NGY2YjM0YjM4ODVhZDJhMmFiNGZhOGI3Yg@correct-mule-127415.upstash.io:6379",
+        default="rediss://default:gQAAAAAAAfG3AAIgcDE0OWNjZDE2NGY2YjM0YjM4ODVhZDJhMmFiNGZhOGI3Yg@correct-mule-127415.upstash.io:6379",  # ✅ KAMA POS!
         description="Redis URL for caching and tokens"
     )
     REDIS_CACHE_TTL: int = Field(
@@ -442,17 +442,17 @@ if __name__ == "__main__":
     print(f"CORS Origins: {settings.cors_origins}")
     print("-" * 60)
     print("🔐 EMAIL Settings:")
-    print(f"  MAIL_SERVER: {settings.MAIL_SERVER}")
-    print(f"  MAIL_PORT: {settings.MAIL_PORT}")
-    print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}")
-    print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}")
+    print(f"  MAIL_SERVER: {settings.MAIL_SERVER}  ✅ KAMA POS!")
+    print(f"  MAIL_PORT: {settings.MAIL_PORT}  ✅ KAMA POS!")
+    print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}  ✅ KAMA POS!")
+    print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}  ✅ KAMA POS!")
     print(f"  MAILTRAP_FROM_NAME: {settings.MAILTRAP_FROM_NAME}")
-    print(f"  MAILTRAP_ENABLED: {settings.MAILTRAP_ENABLED}")
+    print(f"  MAILTRAP_ENABLED: {settings.MAILTRAP_ENABLED}  ✅ KAMA POS!")
     print(f"  Email Enabled: {settings.is_email_enabled}")
     print(f"  Mailtrap Enabled: {settings.is_mailtrap_enabled}")
     print("-" * 60)
     print("📦 REDIS Settings:")
-    print(f"  REDIS_URL: {settings.REDIS_URL[:40]}...")
+    print(f"  REDIS_URL: {settings.REDIS_URL[:40]}...  ✅ KAMA POS!")
     print(f"  REDIS_CACHE_TTL: {settings.REDIS_CACHE_TTL}s")
     print(f"  REDIS_RESET_TOKEN_TTL: {settings.REDIS_RESET_TOKEN_TTL}s")
     print(f"  Redis Enabled: {settings.is_redis_enabled}")

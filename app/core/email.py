@@ -12,12 +12,13 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# 🔥 MAILTRAP API (Kama POS!)
+# 🔥 MAILTRAP API (Kama POS HASA!)
 # ============================================================
 
 def send_email_mailtrap(to_email: str, subject: str, html_content: str):
-    """Send email using Mailtrap API - ✅ IMEBORESHA KAMA POS!"""
+    """Send email using Mailtrap API - ✅ KAMA POS HASA!"""
     try:
+        # 🔥 DATA ZA POS HASA!
         api_token = settings.MAILTRAP_API_TOKEN
         from_email = settings.MAILTRAP_FROM_EMAIL
         from_name = settings.MAILTRAP_FROM_NAME
@@ -58,13 +59,14 @@ def send_email_mailtrap(to_email: str, subject: str, html_content: str):
 
 
 def send_email_smtp(to_email: str, subject: str, html_content: str):
-    """Send email using SMTP (Mailtrap) - Kama POS!"""
+    """Send email using SMTP - ✅ KAMA POS HASA!"""
     try:
-        mail_server = settings.MAIL_SERVER
-        mail_port = settings.MAIL_PORT
-        mail_username = settings.MAIL_USERNAME
-        mail_password = settings.MAIL_PASSWORD
-        mail_from = settings.MAIL_DEFAULT_SENDER
+        # 🔥 DATA ZA POS HASA!
+        mail_server = settings.MAIL_SERVER  # live.smtp.mailtrap.io
+        mail_port = settings.MAIL_PORT  # 587
+        mail_username = settings.MAIL_USERNAME  # api
+        mail_password = settings.MAIL_PASSWORD  # 811496902a46029b831bac1d6afe5c74
+        mail_from = settings.MAIL_DEFAULT_SENDER  # noreply@bubblesmanage.com
         
         logger.info(f"📧 SMTP - Server: {mail_server}:{mail_port}")
         
@@ -98,25 +100,25 @@ def send_email_smtp(to_email: str, subject: str, html_content: str):
 
 
 def send_email(to_email: str, subject: str, html_content: str):
-    """Send email - auto chooses Mailtrap API or SMTP (Kama POS!)"""
+    """Send email - auto chooses Mailtrap API or SMTP (Kama POS HASA!)"""
     
-    # 🔥 Kwanza jaribu Mailtrap API
+    # 🔥 Kwanza jaribu Mailtrap API (Kama POS!)
     if settings.MAILTRAP_ENABLED and settings.MAILTRAP_API_TOKEN:
         success = send_email_mailtrap(to_email, subject, html_content)
         if success:
             return True
     
-    # 🔥 Kama API haifanyi kazi, tumia SMTP
+    # 🔥 Kama API haifanyi kazi, tumia SMTP (Kama POS!)
     logger.info("📧 Falling back to SMTP...")
     return send_email_smtp(to_email, subject, html_content)
 
 
 # ============================================================
-# 🔥 SEND PASSWORD RESET EMAIL (Kama POS!)
+# 🔥 SEND PASSWORD RESET EMAIL (Kama POS HASA!)
 # ============================================================
 
 def send_password_reset_email(to_email: str, reset_link: str, username: str):
-    """Send password reset email - ✅ MWONEKANO WA KIMATAIFA"""
+    """Send password reset email - ✅ KAMA POS HASA!"""
     
     html_content = f"""
     <!DOCTYPE html>
@@ -350,7 +352,7 @@ def send_password_reset_email(to_email: str, reset_link: str, username: str):
 
 
 # ============================================================
-# 🔥🔥🔥 EMAIL SERVICE CLASS - HII NDIO ILIKOSA! 🔥🔥🔥
+# 🔥🔥🔥 EMAIL SERVICE CLASS - KAMA POS HASA! 🔥🔥🔥
 # ============================================================
 
 class EmailService:
