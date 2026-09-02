@@ -39,6 +39,30 @@ import os
 logger = logging.getLogger(__name__)
 
 # ============================================================
+# ✅ REDIS - TRY CONNECT BUT CONTINUE WITHOUT IT
+# ============================================================
+redis_client = None
+REDIS_URL = os.getenv("REDIS_URL", "")
+REDIS_ENABLED = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+
+if REDIS_URL and REDIS_ENABLED:
+    try:
+        import redis
+        redis_client = redis.Redis.from_url(
+            REDIS_URL,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            decode_responses=True
+        )
+        redis_client.ping()
+        logger.info("✅ Redis connected successfully")
+    except Exception as e:
+        logger.warning(f"⚠️ Redis connection failed: {e}")
+        redis_client = None
+else:
+    logger.info("ℹ️ Redis is disabled, running without Redis")
+
+# ============================================================
 # 🔥 FASTAPI APP INSTANCE
 # ============================================================
 app = FastAPI(
@@ -51,7 +75,7 @@ app = FastAPI(
 )
 
 # ============================================================
-# 🔥🔥🔥 CORS MIDDLEWARE - FIXED! 🔥🔥🔥
+# 🔥🔥🔥 CORS MIDDLEWARE 🔥🔥🔥
 # ============================================================
 
 # 🔥 Domain zote zinazoruhusiwa
@@ -59,7 +83,6 @@ ALLOWED_ORIGINS_DEFAULT = (
     "http://localhost:3000,"
     "http://localhost:8000,"
     "https://bubblesmanage.com,"
-    "https://www.bubblesmanage.com,"
     "https://fast-results-frontend.vercel.app,"
     "https://fast-results-backend-ewis.onrender.com"
 )
@@ -111,6 +134,13 @@ past_papers_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 logger.info("📁 Upload directories created successfully")
+
+# ============================================================
+# 🔥 HELPER - GET REDIS (SAFE)
+# ============================================================
+def get_redis():
+    """Return redis client or None if not available"""
+    return redis_client
 
 # ============================================================
 # 🔥 REGISTER API ROUTERS
@@ -168,12 +198,17 @@ def root():
         "status": "running",
         "version": "3.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
+        "redis": "connected" if redis_client else "disabled"
     }
 
 @app.get("/health", summary="Health check endpoint")
 def health():
-    return {"status": "healthy", "timestamp": __import__("datetime").datetime.now().isoformat()}
+    return {
+        "status": "healthy",
+        "timestamp": __import__("datetime").datetime.now().isoformat(),
+        "redis": "connected" if redis_client else "disabled"
+    }
 
 # ============================================================
 # 🔥 TEACHER STUDENTS ENDPOINT
@@ -299,6 +334,7 @@ async def startup_event():
     logger.info(f"📡 Environment: {os.getenv('APP_ENVIRONMENT', 'development')}")
     logger.info(f"🔧 CORS Origins: {ALLOWED_ORIGINS}")
     logger.info(f"🗄️  Database: {'Connected' if os.getenv('DATABASE_URL') else 'Not configured'}")
+    logger.info(f"📦 Redis: {'Connected' if redis_client else 'Disabled'}")
     logger.info("✅ API ready to serve requests!")
 
 # ============================================================

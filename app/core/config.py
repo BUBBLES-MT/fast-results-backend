@@ -65,10 +65,10 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥 CORS SETTINGS - FIXED!
+    # 🔥 CORS SETTINGS - FIXED! (BILA WWW)
     # ============================================================
     ALLOWED_ORIGINS: str = Field(
-        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com,https://www.bubblesmanage.com,https://fast-results-frontend.vercel.app",
+        default="http://localhost:3000,http://localhost:8000,https://*.vercel.app,https://*.onrender.com,https://bubblesmanage.com,https://fast-results-frontend.vercel.app",
         description="Allowed CORS origins (comma separated)"
     )
     
@@ -137,62 +137,64 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥🔥🔥 EMAIL SETTINGS - KAMA POS HASA! 🔥🔥🔥
+    # 🔥 EMAIL SETTINGS
     # ============================================================
-    # ===== MAILTRAP SMTP (Kama POS!) =====
     MAIL_SERVER: str = Field(
-        default="live.smtp.mailtrap.io",  # ✅ KAMA POS!
+        default="live.smtp.mailtrap.io",
         description="SMTP server host"
     )
     MAIL_PORT: int = Field(
-        default=587,  # ✅ KAMA POS!
+        default=587,
         description="SMTP server port"
     )
     MAIL_USERNAME: str = Field(
-        default="api",  # ✅ KAMA POS!
+        default="api",
         description="SMTP username"
     )
     MAIL_PASSWORD: str = Field(
-        default="811496902a46029b831bac1d6afe5c74",  # ✅ KAMA POS!
+        default="811496902a46029b831bac1d6afe5c74",
         description="SMTP password"
     )
     MAIL_USE_TLS: bool = Field(
-        default=True,  # ✅ KAMA POS!
+        default=True,
         description="Use TLS for SMTP"
     )
     MAIL_USE_SSL: bool = Field(
-        default=False,  # ✅ KAMA POS!
+        default=False,
         description="Use SSL for SMTP"
     )
     MAIL_DEFAULT_SENDER: str = Field(
-        default="noreply@bubblesmanage.com",  # ✅ KAMA POS!
+        default="noreply@bubblesmanage.com",
         description="Default from email address"
     )
     
-    # ===== MAILTRAP API (Kama POS!) =====
+    # ===== MAILTRAP API =====
     MAILTRAP_API_TOKEN: str = Field(
-        default="811496902a46029b831bac1d6afe5c74",  # ✅ KAMA POS!
+        default="811496902a46029b831bac1d6afe5c74",
         description="Mailtrap API token"
     )
     MAILTRAP_FROM_EMAIL: str = Field(
-        default="noreply@bubblesmanage.com",  # ✅ KAMA POS!
+        default="noreply@bubblesmanage.com",
         description="Mailtrap from email"
     )
     MAILTRAP_FROM_NAME: str = Field(
-        default="MASI FAST RESULTS",  # ✅ KAMA POS! (Badilisha brand name)
+        default="MASI FAST RESULTS",
         description="Mailtrap from name"
     )
     MAILTRAP_ENABLED: bool = Field(
-        default=True,  # ✅ KAMA POS!
+        default=True,
         description="Enable Mailtrap API for sending emails"
     )
     
     # ============================================================
-    # 🔥🔥🔥 REDIS SETTINGS (KAMA POS HASA!) 🔥🔥🔥
+    # 🔥🔥🔥 REDIS SETTINGS - IMEFUNGWA KABISA! 🔥🔥🔥
     # ============================================================
-    REDIS_URL: str = Field(
-        default="rediss://default:gQAAAAAAAfG3AAIgcDE0OWNjZDE2NGY2YjM0YjM4ODVhZDJhMmFiNGZhOGI3Yg@correct-mule-127415.upstash.io:6379",  # ✅ KAMA POS!
-        description="Redis URL for caching and tokens"
+    # ⚠️ REDIS IMEFUNGWA KWA SASA - KUTOKANA NA MATATIZO YA CONNECTION
+    # ⚠️ ITAFUNGULIWA TENA BAADA YA KUTATUA
+    
+    REDIS_URL: Optional[str] = Field(
+        default=None,  # 🔥 IMEFUNGWA - HAIJATUMIKA
+        description="Redis URL for caching and tokens - DISABLED"
     )
     REDIS_CACHE_TTL: int = Field(
         default=3600,
@@ -252,7 +254,7 @@ class Settings(BaseSettings):
     )
     
     # ============================================================
-    # 🔥 PAYMENT SETTINGS (Optional - Kwa sasa hatuitumii)
+    # 🔥 PAYMENT SETTINGS (Optional)
     # ============================================================
     CLICKPESA_API_KEY: Optional[str] = Field(
         default=None,
@@ -337,13 +339,16 @@ class Settings(BaseSettings):
             return ",".join(v)
         return v
     
-    @field_validator("REDIS_URL")
-    @classmethod
-    def validate_redis_url(cls, v: Optional[str]) -> Optional[str]:
-        """Validate Redis URL"""
-        if v and not v.startswith(("redis://", "rediss://")):
-            raise ValueError("REDIS_URL must start with redis:// or rediss://")
-        return v
+    # ============================================================
+    # 🔥 REDIS VALIDATOR - IMEFUNGWA!
+    # ============================================================
+    # @field_validator("REDIS_URL")
+    # @classmethod
+    # def validate_redis_url(cls, v: Optional[str]) -> Optional[str]:
+    #     """Validate Redis URL - IMEFUNGWA"""
+    #     if v and not v.startswith(("redis://", "rediss://")):
+    #         raise ValueError("REDIS_URL must start with redis:// or rediss://")
+    #     return v
     
     # ============================================================
     # 🔥 HELPER PROPERTIES
@@ -377,8 +382,9 @@ class Settings(BaseSettings):
     
     @property
     def is_redis_enabled(self) -> bool:
-        """Check if Redis is enabled"""
-        return self.REDIS_URL is not None and self.REDIS_URL != ""
+        """Check if Redis is enabled - 🔥 DAIMA FALSE SASA!"""
+        return False  # 🔥 IMEFUNGWA KABISA!
+        # return self.REDIS_URL is not None and self.REDIS_URL != ""
     
     @property
     def is_email_enabled(self) -> bool:
@@ -442,18 +448,16 @@ if __name__ == "__main__":
     print(f"CORS Origins: {settings.cors_origins}")
     print("-" * 60)
     print("🔐 EMAIL Settings:")
-    print(f"  MAIL_SERVER: {settings.MAIL_SERVER}  ✅ KAMA POS!")
-    print(f"  MAIL_PORT: {settings.MAIL_PORT}  ✅ KAMA POS!")
-    print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}  ✅ KAMA POS!")
-    print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}  ✅ KAMA POS!")
+    print(f"  MAIL_SERVER: {settings.MAIL_SERVER}")
+    print(f"  MAIL_PORT: {settings.MAIL_PORT}")
+    print(f"  MAIL_USERNAME: {settings.MAIL_USERNAME}")
+    print(f"  MAIL_DEFAULT_SENDER: {settings.MAIL_DEFAULT_SENDER}")
     print(f"  MAILTRAP_FROM_NAME: {settings.MAILTRAP_FROM_NAME}")
-    print(f"  MAILTRAP_ENABLED: {settings.MAILTRAP_ENABLED}  ✅ KAMA POS!")
+    print(f"  MAILTRAP_ENABLED: {settings.MAILTRAP_ENABLED}")
     print(f"  Email Enabled: {settings.is_email_enabled}")
     print(f"  Mailtrap Enabled: {settings.is_mailtrap_enabled}")
     print("-" * 60)
     print("📦 REDIS Settings:")
-    print(f"  REDIS_URL: {settings.REDIS_URL[:40]}...  ✅ KAMA POS!")
-    print(f"  REDIS_CACHE_TTL: {settings.REDIS_CACHE_TTL}s")
-    print(f"  REDIS_RESET_TOKEN_TTL: {settings.REDIS_RESET_TOKEN_TTL}s")
-    print(f"  Redis Enabled: {settings.is_redis_enabled}")
+    print(f"  REDIS_URL: {settings.REDIS_URL}  🔥 IMEFUNGWA!")
+    print(f"  Redis Enabled: {settings.is_redis_enabled}  🔥 IMEFUNGWA!")
     print("=" * 60)

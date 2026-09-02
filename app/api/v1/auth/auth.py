@@ -15,6 +15,9 @@ from app.models.teacher import Teacher
 from app.models.superadmin import SuperAdmin
 from app.models.school import School, SchoolStatus
 
+# 🔥 REDIS IMEFUNGWA - HAITUMIKI
+# from app.core.redis import redis_service
+
 logger = logging.getLogger(__name__)
 
 # ============================================================
@@ -665,7 +668,7 @@ def register(register_data: RegisterRequest, db: Session = Depends(get_db)):
 
 
 # ============================================================
-# 🔥🔥🔥 FORGOT PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 FORGOT PASSWORD - REDIS IMETENGWA KABISA! 🔥🔥🔥
 # ============================================================
 
 @router.post("/forgot-password")
@@ -707,6 +710,7 @@ async def forgot_password(
         token = secrets.token_urlsafe(32)
         
         # 🔥🔥🔥 HAPA NDIO TOKEN INAHIFADHIWA KWENYE DATABASE (SI REDIS!) 🔥🔥🔥
+        # ⚠️ REDIS HAIJATUMIKA - Token inahifadhiwa kwenye database
         user.reset_token = token
         user.reset_token_expires = get_tz_now() + timedelta(hours=1)
         db.commit()
@@ -745,7 +749,7 @@ async def forgot_password(
 
 
 # ============================================================
-# 🔥🔥🔥 RESET PASSWORD - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 RESET PASSWORD - REDIS IMETENGWA KABISA! 🔥🔥🔥
 # ============================================================
 
 @router.post("/reset-password")
@@ -774,6 +778,7 @@ async def reset_password(
             )
         
         # 🔥🔥🔥 HAPA TOKEN INATHIBITISHWA KUTOKA DATABASE (SI REDIS!) 🔥🔥🔥
+        # ⚠️ REDIS HAIJATUMIKA - Token inathibitishwa kwenye database
         # Find user by token
         user = db.query(Teacher).filter(
             Teacher.reset_token == request.token,
@@ -819,7 +824,7 @@ async def reset_password(
 
 
 # ============================================================
-# 🔥🔥🔥 VALIDATE RESET TOKEN - REDIS IMETENGWA! 🔥🔥🔥
+# 🔥🔥🔥 VALIDATE RESET TOKEN - REDIS IMETENGWA KABISA! 🔥🔥🔥
 # ============================================================
 
 @router.get("/validate-reset-token/{token}")
@@ -832,7 +837,8 @@ async def validate_reset_token(
     
     🔥 REDIS IMETENGWA KABISA! Token inathibitishwa kutoka DATABASE!
     """
-    # 🔥 Angalia kwenye database
+    # 🔥🔥🔥 HAPA TOKEN INATHIBITISHWA KUTOKA DATABASE (SI REDIS!) 🔥🔥🔥
+    # ⚠️ REDIS HAIJATUMIKA - Token inathibitishwa kwenye database
     user = db.query(Teacher).filter(
         Teacher.reset_token == token,
         Teacher.reset_token_expires > get_tz_now()
