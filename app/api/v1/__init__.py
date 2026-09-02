@@ -12,3 +12,4 @@ from app.api.v1 import streams
 from app.api.v1 import academic  # 🔥 Ongeza hii
 from app.api.v1 import promote  # 🔥 Ongeza hii
 from app.api.v1 import past_papers
+from app.api.v1 import payments  # 🔥🔥🔥 MPYA - PAYMENT API!
