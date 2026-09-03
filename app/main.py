@@ -82,7 +82,7 @@ app = FastAPI(
 ALLOWED_ORIGINS_DEFAULT = (
     "http://localhost:3000,"
     "http://localhost:8000,"
-    "https://bubblesmanage.com,"
+    "https://fast-results.bubblesmanage.com,"
     "https://fast-results-frontend.vercel.app,"
     "https://fast-results-backend-ewis.onrender.com"
 )
