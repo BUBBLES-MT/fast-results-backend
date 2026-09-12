@@ -104,11 +104,11 @@ def get_redirect_url(school_level: str) -> str:
 # 🔥 ROLES ZINAZORUHUSIWA KUINGIA MOJA KWA MOJA
 # ============================================================
 AUTO_APPROVED_ROLES = [
-    "Mwalimu Mkuu",
-    "Headmaster",
-    "Headmistress",
-    "Second Master",
-    "Second Mistress"
+    #"Mwalimu Mkuu",
+    #"Headmaster",
+    #"Headmistress",
+    #"Second Master",
+    #"Second Mistress"
 ]
 
 

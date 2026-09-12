@@ -702,9 +702,8 @@ def get_school(
 
 
 # ============================================================
-# 🔥🔥🔥 SUPERADMIN GET SCHOOL STATUS - FULLY FIXED! 🔥🔥🔥
+# 🔥 SCHOOL STATUS - SIMPLE & SAFE VERSION
 # ============================================================
-
 @router.get("/schools/{school_id}/status")
 def get_school_status(
     school_id: int,
@@ -712,106 +711,100 @@ def get_school_status(
     current_user = Depends(get_current_user)
 ):
     """
-    🔥 SUPERADMIN ONLY: Get detailed school status.
+    🔥 SUPERADMIN ONLY: Pata hali kamili ya shule.
+    
+    Inarudisha:
+    - Taarifa za shule
+    - Hali ya subscription
+    - Takwimu za walimu na wanafunzi
+    - Mkuu wa shule (kama yupo)
+    - Uwezo wa kuingia (can_login)
     """
-    from app.models.student import Student
-    from app.models.teacher import Teacher
-    from app.models.payment_transaction import PaymentTransaction
+    
+    # ============================================================
+    # 🔥🔥🔥 LOG YA KWANZA - LAZIMA IONEKANE! 🔥🔥🔥
+    # ============================================================
+    logger.info("=" * 70)
+    logger.info("🔥🔥🔥 STATUS ENDPOINT HIT! 🔥🔥🔥")
+    logger.info(f"   School ID: {school_id}")
+    logger.info(f"   User: {getattr(current_user, 'name', 'Unknown')}")
+    logger.info(f"   User ID: {getattr(current_user, 'id', 'N/A')}")
+    logger.info(f"   User class: {current_user.__class__.__name__}")
+    logger.info("=" * 70)
+    
+    # ============================================================
+    # 🔥 SIMPLE SUPERADMIN CHECK - 100% INAFANYA KAZI
+    # ============================================================
     from app.models.superadmin import SuperAdmin
-    from sqlalchemy import desc
     
-    # ============================================================
-    # 🔥🔥🔥 1. CHECK SUPERADMIN - DIRECT CHECK! 🔥🔥🔥
-    # ============================================================
-    # Hii ndio njia RAHISI ZAIDI na inayofanya kazi 100%!
-    is_superadmin_user = False
-    user_id = getattr(current_user, 'id', None)
-    user_class = current_user.__class__.__name__
-    user_username = getattr(current_user, 'username', '')
-    user_role = getattr(current_user, 'role', '')
-    user_type = getattr(current_user, 'user_type', '')
+    # Check 1: isinstance (rahisi zaidi)
+    is_sa = isinstance(current_user, SuperAdmin)
     
-    # 🔥 LOG USER INFO
-    logger.info("=" * 60)
-    logger.info("🔍 Checking SuperAdmin status...")
-    logger.info(f"   User ID: {user_id}")
-    logger.info(f"   User Class: {user_class}")
-    logger.info(f"   Username: {user_username}")
-    logger.info(f"   Role: {user_role}")
-    logger.info(f"   User Type: {user_type}")
+    # Check 2: ID (SuperAdmin default ni 1)
+    if not is_sa:
+        is_sa = getattr(current_user, 'id', None) == 1
     
-    # ✅ Check 1: Direct class check (HII NDIO RAHISI!)
-    if isinstance(current_user, SuperAdmin):
-        is_superadmin_user = True
-        logger.info("✅ SuperAdmin detected by isinstance(SuperAdmin)")
+    # Check 3: user_type
+    if not is_sa:
+        ut = getattr(current_user, 'user_type', '')
+        if hasattr(ut, 'value'):
+            ut = ut.value
+        is_sa = str(ut).lower() in ['superadmin', 'super_admin']
     
-    # ✅ Check 2: Check ID (SuperAdmin default is 1)
-    elif user_id == 1:
-        is_superadmin_user = True
-        logger.info("✅ SuperAdmin detected by ID=1")
+    # Check 4: role
+    if not is_sa:
+        rl = getattr(current_user, 'role', '')
+        if hasattr(rl, 'value'):
+            rl = rl.value
+        is_sa = str(rl).lower() in ['superadmin', 'super_admin']
     
-    # ✅ Check 3: Check is_superadmin attribute
-    elif hasattr(current_user, 'is_superadmin') and current_user.is_superadmin:
-        is_superadmin_user = True
-        logger.info("✅ SuperAdmin detected by is_superadmin attribute")
+    # Check 5: class name
+    if not is_sa:
+        is_sa = current_user.__class__.__name__ == 'SuperAdmin'
     
-    # ✅ Check 4: Check role
-    elif hasattr(current_user, 'role'):
-        role_val = current_user.role
-        if hasattr(role_val, 'value'):
-            role_val = role_val.value
-        if str(role_val).lower() in ['superadmin', 'super_admin']:
-            is_superadmin_user = True
-            logger.info(f"✅ SuperAdmin detected by role: {role_val}")
+    # Check 6: username
+    if not is_sa:
+        un = str(getattr(current_user, 'username', '')).lower()
+        is_sa = un in ['superadmin', 'admin', 'matandala']
     
-    # ✅ Check 5: Check user_type
-    elif hasattr(current_user, 'user_type'):
-        type_val = current_user.user_type
-        if hasattr(type_val, 'value'):
-            type_val = type_val.value
-        if str(type_val).lower() in ['superadmin', 'super_admin']:
-            is_superadmin_user = True
-            logger.info(f"✅ SuperAdmin detected by user_type: {type_val}")
+    logger.info(f"🔍 is_superadmin result: {is_sa}")
     
-    # ✅ Check 6: Check username
-    elif user_username.lower() in ['superadmin', 'admin', 'matandala']:
-        is_superadmin_user = True
-        logger.info(f"✅ SuperAdmin detected by username: {user_username}")
-    
-    # 🔥 LOG RESULT
-    if is_superadmin_user:
-        logger.info("✅ RESULT: User IS SuperAdmin")
-    else:
-        logger.warning("❌ RESULT: User IS NOT SuperAdmin")
-    
-    logger.info("=" * 60)
-    
-    # If not superadmin, return 403
-    if not is_superadmin_user:
+    if not is_sa:
+        logger.warning(f"❌ ACCESS DENIED - User is not SuperAdmin")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only superadmin can view this information"
         )
     
+    logger.info("✅ SuperAdmin access granted")
+    
     # ============================================================
-    # 2. FIND SCHOOL
+    # 🔥 FIND SCHOOL
     # ============================================================
     school = db.query(School).filter(School.id == school_id).first()
     if not school:
         logger.warning(f"⚠️ School {school_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"School with ID {school_id} not found"
+            detail=f"Shule yenye ID {school_id} haijapatikana"
         )
     
+    logger.info(f"✅ School found: {school.name}")
+    
     # ============================================================
-    # 3. CALCULATE SUBSCRIPTION STATUS
+    # 🔥 IMPORTS (ndani ya function ili kuepuka circular imports)
+    # ============================================================
+    from app.models.student import Student
+    from app.models.teacher import Teacher as TeacherModel
+    
+    # ============================================================
+    # 🔥 SUBSCRIPTION STATUS
     # ============================================================
     now = get_tz_now()
     days_left = 0
     days_overdue = 0
     is_expired = True
-    expiry_date_formatted = "No expiry date set"
+    expiry_date_formatted = "Hakuna tarehe"
     
     if school.subscription_expires_at:
         expires = school.subscription_expires_at
@@ -828,75 +821,102 @@ def get_school_status(
             is_expired = True
     
     # ============================================================
-    # 4. GET STATISTICS
+    # 🔥 STATISTICS (TUMIA `status` BADALA YA `is_active`)
     # ============================================================
-    total_teachers = db.query(Teacher).filter(Teacher.school_id == school_id).count()
-    total_students = db.query(Student).filter(Student.school_id == school_id).count()
-    
-    active_teachers = db.query(Teacher).filter(
-        Teacher.school_id == school_id, 
-        Teacher.is_active == True
+    total_teachers = db.query(TeacherModel).filter(
+        TeacherModel.school_id == school_id
     ).count()
     
-    active_students = db.query(Student).filter(
-        Student.school_id == school_id, 
-        Student.is_active == True
+    active_teachers = db.query(TeacherModel).filter(
+        TeacherModel.school_id == school_id,
+        TeacherModel.status == "active"  # ✅ Sahihi kwa model yako
     ).count()
     
-    # ============================================================
-    # 5. GET RECENT PAYMENT
-    # ============================================================
-    recent_payment = db.query(PaymentTransaction).filter(
-        PaymentTransaction.school_id == school_id,
-        PaymentTransaction.status == "success"
-    ).order_by(desc(PaymentTransaction.created_at)).first()
+    total_students = db.query(Student).filter(
+        Student.school_id == school_id
+    ).count()
+    
+    # 🔥 Kama Student haina `is_active`, tumia total tu
+    active_students = total_students  # Default: wote active
+    
+    # Jaribu kuhesabu active kama column ipo
+    try:
+        if hasattr(Student, 'is_active'):
+            active_students = db.query(Student).filter(
+                Student.school_id == school_id,
+                Student.is_active == True
+            ).count()
+    except Exception as e:
+        logger.warning(f"⚠️ Could not count active students: {e}")
+        active_students = total_students
     
     # ============================================================
-    # 6. DETERMINE CAN_LOGIN
+    # 🔥 CAN LOGIN
     # ============================================================
-    can_login = school.is_active and not is_expired and not school.is_locked_by_superadmin
+    can_login = (
+        school.is_active 
+        and not is_expired 
+        and not school.is_locked_by_superadmin
+    )
     
     # ============================================================
-    # 7. STATUS LABEL
+    # 🔥 STATUS LABEL
     # ============================================================
     if school.is_locked_by_superadmin:
         status_label = "🔒 Locked"
         status_color = "red"
         status_type = "locked"
-        status_message = f"🔒 {school.name} is LOCKED by superadmin"
     elif is_expired:
-        status_label = f"⛔ Expired ({days_overdue} days overdue)"
+        status_label = f"⛔ Expired ({days_overdue} days)"
         status_color = "red"
         status_type = "expired"
-        status_message = f"⛔ {school.name}'s subscription expired {days_overdue} days ago"
     elif not school.is_active:
         status_label = "⏸️ Inactive"
         status_color = "yellow"
         status_type = "inactive"
-        status_message = f"⏸️ {school.name} is INACTIVE"
     elif days_left <= 7 and days_left > 0:
         status_label = f"⚠️ Expiring soon ({days_left} days)"
         status_color = "yellow"
         status_type = "expiring_soon"
-        status_message = f"⚠️ {school.name}'s subscription expires in {days_left} days"
     else:
-        status_label = f"✅ Active ({days_left} days left)"
+        status_label = f"✅ Active ({days_left} days)"
         status_color = "green"
         status_type = "active"
-        status_message = f"✅ {school.name} is ACTIVE with {days_left} days remaining"
     
     # ============================================================
-    # 8. LOG AND RETURN
+    # 🔥 HEADMASTER INFO
     # ============================================================
-    logger.info("=" * 60)
-    logger.info(f"📊 School {school_id} ({school.name}) status checked")
-    logger.info(f"   👤 Checked by: {current_user.name}")
-    logger.info(f"   📌 Status: {status_label}")
-    logger.info(f"   📅 Expiry: {expiry_date_formatted}")
-    logger.info(f"   👨‍🏫 Teachers: {total_teachers} ({active_teachers} active)")
-    logger.info(f"   👨‍🎓 Students: {total_students} ({active_students} active)")
-    logger.info(f"   🔓 Can login: {can_login}")
-    logger.info("=" * 60)
+    headmaster = db.query(TeacherModel).filter(
+        TeacherModel.school_id == school_id,
+        TeacherModel.role.in_(["Mwalimu Mkuu", "Headmaster", "Headmistress"]),
+        TeacherModel.status == "active"
+    ).first()
+    
+    headmaster_info = None
+    if headmaster:
+        headmaster_info = {
+            "id": headmaster.id,
+            "name": headmaster.name,
+            "role": headmaster.role,
+            "email": headmaster.email,
+            "phone": headmaster.phone1
+        }
+    
+    # ============================================================
+    # 🔥 RETURN RESPONSE
+    # ============================================================
+    admin_name = getattr(current_user, 'name', None) or 'SuperAdmin'
+    
+    logger.info("=" * 70)
+    logger.info(f"📊 STATUS RESPONSE")
+    logger.info(f"   School: {school.name} (ID: {school.id})")
+    logger.info(f"   Status: {status_label}")
+    logger.info(f"   Can Login: {can_login}")
+    logger.info(f"   Teachers: {active_teachers}/{total_teachers} active")
+    logger.info(f"   Students: {total_students}")
+    logger.info(f"   Headmaster: {headmaster_info['name'] if headmaster_info else 'HAKUNA'}")
+    logger.info(f"   Checked by: {admin_name}")
+    logger.info("=" * 70)
     
     return {
         "success": True,
@@ -910,12 +930,10 @@ def get_school_status(
             "address": school.address or "N/A",
             "phone": school.phone or "N/A",
             "email": school.email or "N/A",
-            "logo_url": getattr(school, 'logo_url', None),
-            "website": getattr(school, 'website', None)
         },
         "subscription": {
-            "plan": school.subscription_plan or "None",
-            "expires_at": school.subscription_expires_at,
+            "plan": school.subscription_plan or "Hakuna",
+            "expires_at": school.subscription_expires_at.isoformat() if school.subscription_expires_at else None,
             "expires_at_formatted": expiry_date_formatted,
             "days_left": days_left,
             "days_overdue": days_overdue,
@@ -925,7 +943,7 @@ def get_school_status(
             "status": school.status.value if hasattr(school.status, 'value') else str(school.status),
             "status_label": status_label,
             "status_color": status_color,
-            "status_type": status_type
+            "status_type": status_type,
         },
         "statistics": {
             "total_teachers": total_teachers,
@@ -933,28 +951,14 @@ def get_school_status(
             "inactive_teachers": total_teachers - active_teachers,
             "total_students": total_students,
             "active_students": active_students,
-            "inactive_students": total_students - active_students
+            "inactive_students": total_students - active_students,
         },
-        "recent_payment": {
-            "date": recent_payment.created_at if recent_payment else None,
-            "amount": getattr(recent_payment, 'amount', None) if recent_payment else None,
-            "plan": getattr(recent_payment, 'plan', None) if recent_payment else None
-        } if recent_payment else None,
-        "permissions": {
-            "can_login": can_login,
-            "is_active": school.is_active,
-            "is_expired": is_expired,
-            "is_locked": school.is_locked_by_superadmin
-        },
-        "summary": {
-            "status": status_label,
-            "color": status_color,
-            "message": status_message
-        },
-        "checked_by": current_user.name,
-        "checked_at": now.isoformat()
+        "headmaster": headmaster_info,
+        "has_headmaster": headmaster_info is not None,
+        "can_login": can_login,
+        "checked_by": admin_name,
+        "checked_at": now.isoformat(),
     }
-
 
 
 
@@ -2258,4 +2262,542 @@ def deactivate_school(
         "status": school.status,
         "is_locked_by_superadmin": school.is_locked_by_superadmin,
         "performed_by": admin_name
+    }
+
+
+
+
+# ============================================================
+# 🔥🔥🔥 REGISTER SCHOOL HEAD - SUPERADMIN ONLY 🔥🔥🔥
+# ============================================================
+# Wakuu wa shule (Mwalimu Mkuu, Headmaster, Headmistress) 
+# WANASAJILIWA NA SUPERADMIN PEKEE!
+#
+# RULES:
+# - Mkuu (Mwalimu Mkuu/Headmaster/Headmistress) = MMOJA TU kwa shule
+# - Auto-approved (active moja kwa moja)
+# - Hakuna email verification
+# - "Mwalimu Mkuu Msaidizi", "Second Master", "Second Mistress" 
+#   WANAJISAJILI WENYEWE na kusubiri approval ya Mkuu
+# ============================================================
+
+class HeadRegisterRequest(BaseModel):
+    """Schema ya kusajili Mkuu wa Shule"""
+    name: str
+    username: str
+    email: str
+    password: str
+    phone1: Optional[str] = None
+    phone2: Optional[str] = None
+    role: str  # Mwalimu Mkuu, Headmaster, Headmistress
+    school_id: int
+    
+    @validator('password')
+    def validate_password(cls, v):
+        if len(v) < 6:
+            raise ValueError("Password lazima iwe na herufi 6 au zaidi")
+        return v
+    
+    @validator('name', 'username', 'email')
+    def validate_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("Sehemu hii haiwezi kuwa tupu")
+        return v.strip()
+    
+    @validator('email')
+    def validate_email(cls, v):
+        if '@' not in v or '.' not in v:
+            raise ValueError("Email si sahihi")
+        return v.strip().lower()
+    
+    @validator('username')
+    def validate_username(cls, v):
+        if len(v.strip()) < 3:
+            raise ValueError("Username lazima iwe na herufi 3 au zaidi")
+        return v.strip()
+
+
+class HeadResponse(BaseModel):
+    """Response ya Mkuu aliye sajiliwa"""
+    id: int
+    name: str
+    username: str
+    email: str
+    role: str
+    school_id: int
+    school_name: str
+    status: str
+    active: bool
+    phone1: Optional[str] = None
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+# ============================================================
+# 🔥 VALID ROLES KWA KILA SCHOOL LEVEL
+# ============================================================
+# ⚠️ MUHIMU: SuperAdmin anasajili MKUU PEKEE!
+# "Mwalimu Mkuu Msaidizi" na "Second Master/Mistress" 
+# WANAJISAJILI WENYEWE na kusubiri approval!
+
+PRIMARY_HEAD_ROLES = ["Mwalimu Mkuu"]
+SECONDARY_HEAD_ROLES = ["Headmaster", "Headmistress"]
+
+# Mkuu = MMOJA TU kwa shule
+HEADMASTER_ONLY_ROLES = ["Mwalimu Mkuu", "Headmaster", "Headmistress"]
+
+
+# ============================================================
+# 🔥 ENDPOINT #1: REGISTER SCHOOL HEAD
+# ============================================================
+@router.post("/schools/{school_id}/register-head", response_model=HeadResponse)
+def register_school_head(
+    school_id: int,
+    head_data: HeadRegisterRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Sajili Mkuu wa Shule.
+    
+    RULES:
+    - Mkuu (Mwalimu Mkuu/Headmaster/Headmistress) = MMOJA TU kwa shule
+    - Auto-approved (active moja kwa moja)
+    - Hakuna email verification
+    - SuperAdmin hayupo kwenye teachers table, kwa hiyo approved_by=None
+    - Audit trail inahifadhiwa kwenye rejection_reason
+    """
+    
+    admin_name = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'SuperAdmin')
+    
+    logger.info("=" * 60)
+    logger.info("👑 REGISTER SCHOOL HEAD")
+    logger.info(f"   School ID: {school_id}")
+    logger.info(f"   Role: {head_data.role}")
+    logger.info(f"   Name: {head_data.name}")
+    logger.info(f"   Username: {head_data.username}")
+    logger.info(f"   Email: {head_data.email}")
+    logger.info(f"   By: {admin_name}")
+    logger.info("=" * 60)
+    
+    # ============================================================
+    # 1. CHECK SUPERADMIN
+    # ============================================================
+    if not is_superadmin(current_user):
+        logger.warning(f"⚠️ Unauthorized register-head attempt by user {getattr(current_user, 'id', 'unknown')}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Superadmin privileges required."
+        )
+    
+    # ============================================================
+    # 2. VERIFY SCHOOL EXISTS
+    # ============================================================
+    school = db.query(School).filter(School.id == school_id).first()
+    if not school:
+        logger.warning(f"⚠️ School {school_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Shule yenye ID {school_id} haijapatikana"
+        )
+    
+    # ============================================================
+    # 3. VALIDATE ROLE vs SCHOOL LEVEL
+    # ============================================================
+    school_level = school.school_level or (school.school_type.lower() if school.school_type else "secondary")
+    
+    if school_level == "primary":
+        if head_data.role not in PRIMARY_HEAD_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"❌ Role '{head_data.role}' haifai kwa shule ya msingi.\n"
+                    f"Tumia: {', '.join(PRIMARY_HEAD_ROLES)}"
+                )
+            )
+    elif school_level in ["secondary", "advanced"]:
+        if head_data.role not in SECONDARY_HEAD_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"❌ Role '{head_data.role}' haifai kwa shule ya sekondari.\n"
+                    f"Tumia: {', '.join(SECONDARY_HEAD_ROLES)}"
+                )
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"School level '{school_level}' haitambuliki"
+        )
+    
+    # ============================================================
+    # 4. 🔥 VALIDATION: MKUU MMOJA TU KWA SHULE!
+    # ============================================================
+    if head_data.role in HEADMASTER_ONLY_ROLES:
+        existing_head = db.query(Teacher).filter(
+            Teacher.school_id == school_id,
+            Teacher.role.in_(HEADMASTER_ONLY_ROLES),
+            Teacher.status == "active"
+        ).first()
+        
+        if existing_head:
+            logger.warning(f"⚠️ School {school.name} already has a head: {existing_head.name}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"❌ Shule hii ina Mkuu tayari!\n\n"
+                    f"Jina: {existing_head.name}\n"
+                    f"Role: {existing_head.role}\n"
+                    f"Email: {existing_head.email}\n"
+                    f"Simu: {existing_head.phone1 or 'Haipo'}\n\n"
+                    f"⚠️ Mkuu mmoja tu anaruhusiwa kwa shule.\n"
+                    f"Kama unataka kubadilisha, futa aliyepo kwanza."
+                )
+            )
+    
+    # ============================================================
+    # 5. CHECK USERNAME/EMAIL EXISTS
+    # ============================================================
+    existing_username = db.query(Teacher).filter(
+        Teacher.username == head_data.username
+    ).first()
+    
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username '{head_data.username}' imetumika tayari. Chagua username nyingine."
+        )
+    
+    existing_email = db.query(Teacher).filter(
+        Teacher.email == head_data.email
+    ).first()
+    
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Email '{head_data.email}' imetumika tayari. Tumia email nyingine."
+        )
+    
+    # ============================================================
+    # 6. CREATE TEACHER (AUTO-APPROVED)
+    # ============================================================
+    try:
+        # 🔥 FIX: SuperAdmin hayupo kwenye teachers table
+        # Weka approved_by=None na audit trail kwenye rejection_reason
+        new_head = Teacher(
+            name=head_data.name,
+            username=head_data.username,
+            email=head_data.email,
+            phone1=head_data.phone1,
+            phone2=head_data.phone2,
+            role=head_data.role,
+            school_id=school_id,
+            status="active",
+            active=True,
+            approved_by=None,  # ✅ FIX: SuperAdmin hayupo kwenye teachers table!
+            approved_at=get_tz_now(),
+            rejection_reason=f"✅ Registered by SuperAdmin: {admin_name}"  # 🔥 Audit trail
+        )
+        new_head.set_password(head_data.password)
+        
+        db.add(new_head)
+        db.commit()
+        db.refresh(new_head)
+        
+        logger.info(
+            f"✅ SuperAdmin {admin_name} registered "
+            f"{head_data.role} '{new_head.name}' (ID: {new_head.id}) "
+            f"for school '{school.name}' (ID: {school.id})"
+        )
+        logger.info("=" * 60)
+        
+        return HeadResponse(
+            id=new_head.id,
+            name=new_head.name,
+            username=new_head.username,
+            email=new_head.email,
+            role=new_head.role,
+            school_id=new_head.school_id,
+            school_name=school.name,
+            status=new_head.status,
+            active=new_head.active,
+            phone1=new_head.phone1,
+            created_at=new_head.created_at
+        )
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Failed to register head: {str(e)}")
+        logger.error(f"   School ID: {school_id}, Username: {head_data.username}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Imeshindwa kusajili Mkuu: {str(e)}"
+        )
+
+
+# ============================================================
+# 🔥 ENDPOINT #2: GET SCHOOL HEADS
+# ============================================================
+@router.get("/schools/{school_id}/heads")
+def get_school_heads(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Pata Mkuu wa shule (MMOJA TU).
+    """
+    
+    if not is_superadmin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Superadmin privileges required."
+        )
+    
+    school = db.query(School).filter(School.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="Shule haijapatikana")
+    
+    # Determine valid roles kwa school level
+    school_level = school.school_level or "secondary"
+    if school_level == "primary":
+        head_roles = PRIMARY_HEAD_ROLES
+    else:
+        head_roles = SECONDARY_HEAD_ROLES
+    
+    # Pata Mkuu PEKEE
+    headmaster = db.query(Teacher).filter(
+        Teacher.school_id == school_id,
+        Teacher.role.in_(head_roles),
+        Teacher.status == "active"
+    ).first()
+    
+    if not headmaster:
+        return {
+            "school_id": school_id,
+            "school_name": school.name,
+            "school_level": school_level,
+            "has_headmaster": False,
+            "headmaster": None,
+            "message": "Shule hii haina Mkuu bado"
+        }
+    
+    return {
+        "school_id": school_id,
+        "school_name": school.name,
+        "school_level": school_level,
+        "has_headmaster": True,
+        "headmaster": {
+            "id": headmaster.id,
+            "name": headmaster.name,
+            "username": headmaster.username,
+            "email": headmaster.email,
+            "role": headmaster.role,
+            "phone1": headmaster.phone1,
+            "phone2": headmaster.phone2,
+            "status": headmaster.status,
+            "active": headmaster.active,
+            "created_at": headmaster.created_at.isoformat() if headmaster.created_at else None
+        }
+    }
+
+
+# ============================================================
+# 🔥 ENDPOINT #3: DELETE SCHOOL HEAD (SAHIHI KABISA!)
+# ============================================================
+@router.delete("/heads/{head_id}")
+def delete_school_head(
+    head_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Futa Mkuu wa Shule.
+    
+    🔥 KANUNI MUHIMU ZA USALAMA:
+    - ✅ Marks za wanafunzi ZINABAKI (teacher_id inakuwa NULL)
+    - ✅ Assignments zinaondolewa (ili Mkuu mpya apewe masomo)
+    - ✅ Mkuu mwenyewe anaondolewa
+    - ✅ Wanafunzi wanabaki salama
+    - ✅ Ripoti na historia ya shule inabaki
+    """
+    
+    # ============================================================
+    # 1. CHECK SUPERADMIN
+    # ============================================================
+    if not is_superadmin(current_user):
+        logger.warning(f"⚠️ Unauthorized delete-head attempt by user {getattr(current_user, 'id', 'unknown')}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Superadmin privileges required."
+        )
+    
+    # ============================================================
+    # 2. FIND HEAD
+    # ============================================================
+    head = db.query(Teacher).filter(Teacher.id == head_id).first()
+    if not head:
+        raise HTTPException(status_code=404, detail="Mkuu haijapatikana")
+    
+    # Verify it's actually a head role
+    all_head_roles = PRIMARY_HEAD_ROLES + SECONDARY_HEAD_ROLES
+    if head.role not in all_head_roles:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Teacher '{head.name}' si Mkuu wa Shule. Role: {head.role}"
+        )
+    
+    head_name = head.name
+    head_role = head.role
+    head_school = head.school_id
+    admin_name = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'SuperAdmin')
+    
+    logger.info("=" * 60)
+    logger.info(f"🗑️ DELETE SCHOOL HEAD")
+    logger.info(f"   Head: {head_name} ({head_role})")
+    logger.info(f"   School ID: {head_school}")
+    logger.info(f"   By: {admin_name}")
+    logger.info("=" * 60)
+    
+    # ============================================================
+    # 3. PERFORM DELETION
+    # ============================================================
+    try:
+        from app.models.mark import Mark
+        from app.models.teacher_subject import TeacherSubject
+        from app.models.student import Student
+        
+        # ============================================================
+        # 🔥 3.1: MARKS (ALAMA ZA WANAFUNZI) - ZINABAKI!
+        # ============================================================
+        # Badala ya kufuta marks, tuna-update teacher_id kuwa NULL
+        # Hii inahifadhi alama zote za wanafunzi!
+        marks_preserved = db.query(Mark).filter(
+            Mark.teacher_id == head_id
+        ).update(
+            {Mark.teacher_id: None},
+            synchronize_session=False
+        )
+        
+        logger.info(f"✅ PRESERVED {marks_preserved} marks (teacher_id → NULL)")
+        
+        # ============================================================
+        # 🔥 3.2: ASSIGNMENTS (MASOMO YA MWALIMU) - YANAONDOKA
+        # ============================================================
+        # Assignments zinaondolewa ili Mkuu mpya apewe masomo
+        assignments_freed = db.query(TeacherSubject).filter(
+            TeacherSubject.teacher_id == head_id
+        ).count()
+        
+        db.query(TeacherSubject).filter(
+            TeacherSubject.teacher_id == head_id
+        ).delete(synchronize_session=False)
+        
+        logger.info(f"✅ FREED {assignments_freed} assignments (available for reassignment)")
+        
+        # ============================================================
+        # 🔥 3.3: MKUU MWENYEWE - ANAONDOKA
+        # ============================================================
+        db.delete(head)
+        db.commit()
+        
+        logger.info(f"✅ DELETED head account: {head_name}")
+        
+        # ============================================================
+        # 4. VERIFY STUDENTS REMAIN (Wanafunzi wabaki)
+        # ============================================================
+        students_remaining = db.query(Student).filter(
+            Student.school_id == head_school
+        ).count()
+        
+        logger.info(f"👨‍🎓 Students remaining in school: {students_remaining}")
+        logger.info("=" * 60)
+        
+        # ============================================================
+        # 5. RETURN SUCCESS RESPONSE
+        # ============================================================
+        return {
+            "success": True,
+            "message": f"{head_role} '{head_name}' amefutwa kikamilifu",
+            "deleted_id": head_id,
+            "school_id": head_school,
+            "details": {
+                "marks_preserved": marks_preserved,
+                "assignments_freed": assignments_freed,
+                "students_remaining": students_remaining,
+            },
+            "note": (
+                "✅ Alama za wanafunzi ZINABAKI salama. "
+                "Masomo yameachiliwa kwa mwalimu mpya. "
+                "Wanafunzi wote wanabaki."
+            ),
+            "performed_by": admin_name,
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"❌ Failed to delete head: {str(e)}")
+        logger.error(f"   Head ID: {head_id}, Name: {head_name}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Imeshindwa kufuta Mkuu: {str(e)}"
+        )
+
+
+# ============================================================
+# 🔥 ENDPOINT #4: GET HEADMASTER OF A SCHOOL (QUICK)
+# ============================================================
+@router.get("/schools/{school_id}/headmaster")
+def get_school_headmaster(
+    school_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    🔥 SUPERADMIN ONLY: Pata Mkuu PEKEE (bila wasaidizi).
+    Endpoint hii inatumika na Frontend kuangalia kama shule ina Mkuu.
+    """
+    
+    if not is_superadmin(current_user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Superadmin privileges required."
+        )
+    
+    school = db.query(School).filter(School.id == school_id).first()
+    if not school:
+        raise HTTPException(status_code=404, detail="Shule haijapatikana")
+    
+    headmaster = db.query(Teacher).filter(
+        Teacher.school_id == school_id,
+        Teacher.role.in_(HEADMASTER_ONLY_ROLES),
+        Teacher.status == "active"
+    ).first()
+    
+    if not headmaster:
+        return {
+            "school_id": school_id,
+            "school_name": school.name,
+            "has_headmaster": False,
+            "headmaster": None,
+            "message": "Shule hii haina Mkuu bado"
+        }
+    
+    return {
+        "school_id": school_id,
+        "school_name": school.name,
+        "has_headmaster": True,
+        "headmaster": {
+            "id": headmaster.id,
+            "name": headmaster.name,
+            "username": headmaster.username,
+            "email": headmaster.email,
+            "role": headmaster.role,
+            "phone1": headmaster.phone1,
+            "phone2": headmaster.phone2,
+            "status": headmaster.status,
+            "active": headmaster.active
+        }
     }
