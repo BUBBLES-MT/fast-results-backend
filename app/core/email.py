@@ -361,20 +361,33 @@ class EmailService:
     Hii ndio inaitwa na app/api/v1/auth/auth.py
     """
     
-    def send_password_reset_email(self, to_email: str, reset_token: str, username: str) -> bool:
+    def send_password_reset_email(
+        self,
+        to_email: str,
+        reset_token: str,
+        username: str,
+        reset_link: str = None,
+    ) -> bool:
         """
-        Send password reset email using token
+        Send password reset email using token.
+        
+        ✅ MPYA: Sasa inaweza kupokea `reset_link` tofauti kwa:
+        - Walimu: /reset-password
+        - Wazazi: /parent/reset-password
         
         Args:
             to_email: Recipient email address
             reset_token: Password reset token
             username: User's name for personalization
+            reset_link: Optional - Full reset link (kama haipo, inatengeneza ya walimu)
         
         Returns:
             bool: True if sent successfully, False otherwise
         """
-        # 🔥 Build reset link
-        reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
+        # ✅ Kama reset_link imetolewa, tumia hiyo
+        if reset_link is None:
+            # Default (ya WALIMU)
+            reset_link = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
         
         # 🔥 Send email
         return send_password_reset_email(to_email, reset_link, username)

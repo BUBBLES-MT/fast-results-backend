@@ -1213,7 +1213,8 @@ async def parent_forgot_password(
         email_sent = email_service.send_password_reset_email(
             to_email=parent.email,
             reset_token=token,
-            username=username
+            username=username,
+            reset_link=reset_link,  # ✅ PITISHIA HAPA
         )
         
         if email_sent:
