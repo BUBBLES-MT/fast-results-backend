@@ -1,7 +1,10 @@
+# app/api/v1/parents.py
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import pytz
 import secrets
 import logging
 from pydantic import BaseModel, EmailStr
@@ -19,10 +22,21 @@ from app.models.subject import Subject
 from app.models.mark import Mark
 
 # ============================================================
-# 🔥 LOGGER - IMEONGEZWA!
+# 🔥 LOGGER
 # ============================================================
 
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# 🔥 TIMEZONE KWA TANZANIA (UTC+3)
+# ============================================================
+TZ = pytz.timezone("Africa/Dar_es_Salaam")
+
+
+def get_tz_now():
+    """Get current time in Tanzania timezone (UTC+3)"""
+    return datetime.now(TZ)
+
 
 router = APIRouter(prefix="/parents", tags=["Parents"])
 
@@ -40,6 +54,7 @@ class ParentRegister(BaseModel):
     confirm_password: str
     school_id: int
 
+
 class ParentResponse(BaseModel):
     id: int
     name: str
@@ -54,13 +69,16 @@ class ParentResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class ParentLogin(BaseModel):
     username: str
     password: str
 
+
 class ChildRegistration(BaseModel):
     student_id: int
     relationship: Optional[str] = "Biological"
+
 
 class ChildResponse(BaseModel):
     id: int
@@ -74,14 +92,17 @@ class ChildResponse(BaseModel):
     relationship: str
     is_active: bool
 
+
 class ParentChildResponse(BaseModel):
     parent_id: int
     child: ChildResponse
+
 
 class StudentLookup(BaseModel):
     class_id: int
     stream_id: Optional[int] = None
     roll_number: Optional[str] = None
+
 
 class StudentLookupResponse(BaseModel):
     id: int
@@ -90,10 +111,12 @@ class StudentLookupResponse(BaseModel):
     class_name: str
     stream_name: Optional[str]
 
+
 class ParentDashboardResponse(BaseModel):
     parent: ParentResponse
     children: List[ChildResponse]
     total_children: int
+
 
 # ============================================================
 # 🔥 FORGOT PASSWORD SCHEMAS
@@ -101,6 +124,7 @@ class ParentDashboardResponse(BaseModel):
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+
 
 class ResetPasswordRequest(BaseModel):
     token: str
@@ -1177,8 +1201,9 @@ async def parent_forgot_password(
         
         token = secrets.token_urlsafe(32)
         
+        # ✅ TUMIA TANZANIA TIMEZONE
         parent.reset_token = token
-        parent.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+        parent.reset_token_expires = get_tz_now() + timedelta(hours=1)
         db.commit()
         
         username = parent.name or parent.username or "Mzazi"
@@ -1240,9 +1265,10 @@ async def parent_reset_password(
                 detail="Nenosiri lazima iwe na herufi 6 au zaidi"
             )
         
+        # ✅ TUMIA TANZANIA TIMEZONE
         parent = db.query(Parent).filter(
             Parent.reset_token == request.token,
-            Parent.reset_token_expires > datetime.utcnow()
+            Parent.reset_token_expires > get_tz_now()
         ).first()
         
         if not parent:
@@ -1252,7 +1278,7 @@ async def parent_reset_password(
             )
         
         parent.password_hash = get_password_hash(request.new_password)
-        parent.updated_at = datetime.utcnow()
+        parent.updated_at = get_tz_now()
         
         parent.reset_token = None
         parent.reset_token_expires = None
@@ -1287,9 +1313,10 @@ async def parent_validate_reset_token(
     """
     Thibitisha kama tokeni ya kuweka upya nenosiri bado ni halali
     """
+    # ✅ TUMIA TANZANIA TIMEZONE
     parent = db.query(Parent).filter(
         Parent.reset_token == token,
-        Parent.reset_token_expires > datetime.utcnow()
+        Parent.reset_token_expires > get_tz_now()
     ).first()
     
     if parent:
