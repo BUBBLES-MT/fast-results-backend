@@ -1,11 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from app.core.database import get_db
 from app.models.student import Student
 from app.models.school import School
+from app.models.school_class import SchoolClass
+from app.models.stream import Stream
 from pydantic import BaseModel
 from app.core.security import get_current_user
+import logging
+
+# ✅ IMPORT HELPER MPYA
+from app.api.v1.students.import_helper import (
+    parse_excel_students,
+    import_students_to_db,
+    create_import_template,
+)
+
+logger = logging.getLogger(__name__)
 
 # ================================
 # Pydantic Schemas
@@ -60,7 +73,6 @@ def _get_user_role(user) -> str:
     """Get user role with proper normalization (case-insensitive)"""
     role = None
     
-    # Try different sources for role
     if hasattr(user, 'role'):
         role = user.role
     elif hasattr(user, 'user_type'):
@@ -68,17 +80,14 @@ def _get_user_role(user) -> str:
     elif hasattr(user, 'user_role'):
         role = user.user_role
     
-    # Convert to string and normalize
     if role is not None:
         if hasattr(role, 'value'):
             role_str = role.value
         else:
             role_str = str(role)
         
-        # Normalize: capitalize properly
         role_upper = role_str.upper()
         
-        # Secondary roles (English)
         if role_upper == "TEACHER":
             return "Teacher"
         elif role_upper == "ACADEMIC":
@@ -93,7 +102,6 @@ def _get_user_role(user) -> str:
             return "Second Mistress"
         elif role_upper == "ACCOUNTANT":
             return "Accountant"
-        # Primary roles (Kiswahili)
         elif role_upper == "MWALIMU":
             return "Mwalimu"
         elif role_upper == "MTAALUMA":
@@ -105,7 +113,6 @@ def _get_user_role(user) -> str:
         else:
             return role_str
     
-    # Fallback based on class name
     class_name = type(user).__name__
     if class_name == "Teacher":
         return "Teacher"
@@ -113,6 +120,63 @@ def _get_user_role(user) -> str:
         return "Superadmin"
     
     return "Unknown"
+
+
+# ============================================================
+# ✅ ENDPOINT 0: IMPORT TEMPLATE (LAZIMA IWE KWANZA!)
+# ============================================================
+@router.get("/students/import-template")
+async def download_import_template_secondary(
+    current_user = Depends(get_current_user),
+):
+    """
+    ✅ Pakua template ya Excel (SECONDARY)
+    """
+    buffer = create_import_template(level="secondary")
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=student_import_template_secondary.xlsx"
+        }
+    )
+
+
+# ============================================================
+# ✅ ENDPOINT 0.5: IMPORT EXCEL (LAZIMA IWE KWANZA!)
+# ============================================================
+@router.post("/students/import-excel")
+async def import_students_excel_secondary(
+    school_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """
+    ✅ Import wanafunzi wa SECONDARY kutoka Excel
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(400, "File lazima iwe Excel (.xlsx au .xls)")
+    
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File ni kubwa sana (max 10MB)")
+    
+    students_data = parse_excel_students(contents)
+    
+    result = import_students_to_db(
+        students_data=students_data,
+        school_id=school_id,
+        db=db,
+        SchoolClass=SchoolClass,
+        Stream=Stream,
+        Student=Student,
+        level="secondary",
+    )
+    
+    return {"success": True, "level": "secondary", **result}
+
 
 # ============================================================
 # ENDPOINT 1: MY STUDENTS (MUST BE FIRST - before {student_id})
@@ -134,11 +198,10 @@ def get_my_students(
         user_role = _get_user_role(current_user)
         user_id = getattr(current_user, 'id', None)
         
-        print(f"=== get_my_students called ===")
-        print(f"User role: {user_role}")
-        print(f"User ID: {user_id}")
+        logger.info(f"=== get_my_students called ===")
+        logger.info(f"User role: {user_role}")
+        logger.info(f"User ID: {user_id}")
         
-        # SUPERADMIN
         if isinstance(current_user, SuperAdmin):
             students = db.query(Student).all()
             result = []
@@ -167,7 +230,6 @@ def get_my_students(
                 })
             return result
         
-        # FOR ALL SCHOOL STAFF (Secondary + Primary)
         staff_roles = ["Teacher", "Academic", "Headmaster", "Headmistress", "Second Master", "Second Mistress", 
                        "Mwalimu", "Mtaaluma", "Mwalimu Mkuu", "Mwalimu Mkuu Msaidizi"]
         
@@ -176,43 +238,31 @@ def get_my_students(
                 TeacherSubject.teacher_id == user_id
             ).all()
             
-            print(f"Assignments found: {len(assignments)}")
-            
             if not assignments:
                 return []
             
             result = []
             
             for assignment in assignments:
-                # Get subject name
                 subject = db.query(Subject).filter(Subject.id == assignment.subject_id).first()
                 subject_name = subject.name if subject else f"Subject {assignment.subject_id}"
                 
-                # Get class name
                 class_obj = db.query(SchoolClass).filter(SchoolClass.id == assignment.class_id).first()
                 class_name = class_obj.name if class_obj else f"Class {assignment.class_id}"
                 
-                # Get stream name
                 stream_obj = db.query(Stream).filter(Stream.id == assignment.stream_id).first()
                 stream_name = stream_obj.name if stream_obj else ""
                 
-                # Create display name with BOTH class and stream
                 if stream_name:
                     display_class = f"{class_name} {stream_name}"
                 else:
                     display_class = class_name
                 
-                print(f"Assignment: {display_class} - {subject_name}")
-                
-                # Get students for this SPECIFIC class AND stream
                 students = db.query(Student).filter(
                     Student.class_id == assignment.class_id,
                     Student.stream_id == assignment.stream_id
                 ).all()
                 
-                print(f"Found {len(students)} students for {display_class}")
-                
-                # Add each student to result
                 for student in students:
                     result.append({
                         "id": student.id,
@@ -232,16 +282,16 @@ def get_my_students(
                         "address": student.address
                     })
             
-            print(f"Total students returned: {len(result)}")
             return result
         
         return []
         
     except Exception as e:
-        print(f"ERROR in get_my_students: {str(e)}")
+        logger.error(f"ERROR in get_my_students: {str(e)}")
         import traceback
         traceback.print_exc()
         return []
+
 
 # ============================================================
 # ENDPOINT 2: GET SINGLE STUDENT
@@ -259,19 +309,16 @@ def get_student(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # Get class name
     class_name = None
     if student.class_id:
         school_class = db.query(SchoolClass).filter(SchoolClass.id == student.class_id).first()
         class_name = school_class.name if school_class else None
     
-    # Get stream name
     stream_name = None
     if student.stream_id:
         stream = db.query(Stream).filter(Stream.id == student.stream_id).first()
         stream_name = stream.name if stream else None
     
-    # Format display class name
     display_class = class_name if class_name else ""
     if stream_name:
         display_class = f"{class_name} {stream_name}" if class_name else stream_name
@@ -293,8 +340,9 @@ def get_student(
         "enrollment_date": student.enrollment_date
     }
 
+
 # ============================================================
-# ENDPOINT 3: GET ALL STUDENTS - FIXED!
+# ENDPOINT 3: GET ALL STUDENTS
 # ============================================================
 @router.get("/students")
 def get_all_students(
@@ -309,7 +357,6 @@ def get_all_students(
     
     user_role = _get_user_role(current_user)
     
-    # SUPERADMIN - can see all
     if isinstance(current_user, SuperAdmin):
         query = db.query(
             Student.id,
@@ -354,7 +401,6 @@ def get_all_students(
             "enrollment_date": s.enrollment_date
         } for s in students]
     
-    # 🔥 ADMIN ROLES
     admin_roles = [
         "Headmaster", "Headmistress", "Second Master", "Second Mistress", "Academic",
         "Mwalimu Mkuu", "Mwalimu Mkuu Msaidizi", "Mtaaluma"
@@ -404,7 +450,6 @@ def get_all_students(
                 "enrollment_date": s.enrollment_date
             } for s in students]
     
-    # TEACHER - should use my-students endpoint
     if user_role == "Teacher" or user_role == "Mwalimu":
         raise HTTPException(
             status_code=403, 
@@ -412,7 +457,6 @@ def get_all_students(
         )
     
     raise HTTPException(status_code=403, detail=f"Not authorized. Your role: {user_role}")
-
 
 
 # ============================================================
@@ -428,7 +472,6 @@ def create_student(
     
     user_role = _get_user_role(current_user)
     
-    # 🔥 Allowed roles to create students
     create_roles = ["Headmaster", "Headmistress", "Academic", "Mwalimu Mkuu", "Mtaaluma"]
     
     if not isinstance(current_user, SuperAdmin) and user_role not in create_roles:
@@ -465,6 +508,7 @@ def create_student(
     db.refresh(new_student)
     return new_student
 
+
 # ============================================================
 # ENDPOINT 5: UPDATE STUDENT
 # ============================================================
@@ -483,7 +527,6 @@ def update_student(
     
     user_role = _get_user_role(current_user)
     
-    # 🔥 Allowed roles to update students
     update_roles = ["Headmaster", "Headmistress", "Academic", "Mwalimu Mkuu", "Mtaaluma"]
     
     if not isinstance(current_user, SuperAdmin) and user_role not in update_roles:
@@ -496,6 +539,7 @@ def update_student(
     db.commit()
     db.refresh(student)
     return {"message": "Student updated successfully", "student": student}
+
 
 # ============================================================
 # ENDPOINT 6: DELETE STUDENT
@@ -514,7 +558,6 @@ def delete_student(
     
     user_role = _get_user_role(current_user)
     
-    # 🔥 Allowed roles to delete students
     delete_roles = ["Headmaster", "Headmistress", "Academic", "Mwalimu Mkuu", "Mtaaluma"]
     
     if not isinstance(current_user, SuperAdmin) and user_role not in delete_roles:

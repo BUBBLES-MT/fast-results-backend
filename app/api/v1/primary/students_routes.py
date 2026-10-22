@@ -1,7 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
+import logging
+
 from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.student import Student
 from app.models.school import School
 from app.models.school_class import SchoolClass
@@ -11,14 +16,18 @@ from app.models.teacher import Teacher
 from app.models.superadmin import SuperAdmin
 from app.models.subject import Subject
 from pydantic import BaseModel
-from app.core.security import get_current_user
-from datetime import datetime
-import logging
+
+# ✅ IMPORT HELPER MPYA
+from app.api.v1.students.import_helper import (
+    parse_excel_students,
+    import_students_to_db,
+    create_import_template,
+)
 
 logger = logging.getLogger(__name__)
 
 # ================================
-# Helper function - PRIMARY
+# Helper functions - PRIMARY
 # ================================
 def get_role_string(role):
     """Convert role to string"""
@@ -56,7 +65,7 @@ def verify_primary_school(school_id: int, db: Session) -> School:
     return school
 
 # ================================
-# Pydantic Schemas - PRIMARY (IMESAHIHISHWA!)
+# Pydantic Schemas - PRIMARY
 # ================================
 
 class StudentCreate(BaseModel):
@@ -85,7 +94,6 @@ class StudentUpdate(BaseModel):
     mother_name: Optional[str] = None
     mother_phone: Optional[str] = None
 
-# 🔥🔥🔥 BADILISHA HII - ONGEZA class_name NA stream_name! 🔥🔥🔥
 class StudentResponse(BaseModel):
     id: int
     name: str
@@ -93,9 +101,9 @@ class StudentResponse(BaseModel):
     roll_number: Optional[str]
     school_id: int
     class_id: Optional[int]
-    class_name: Optional[str] = None      # 🔥 ONGEZA HII!
+    class_name: Optional[str] = None
     stream_id: Optional[int]
-    stream_name: Optional[str] = None     # 🔥 ONGEZA HII!
+    stream_name: Optional[str] = None
     father_name: str
     father_phone: str
     mother_name: Optional[str] = None
@@ -114,7 +122,58 @@ class StudentResponse(BaseModel):
 router = APIRouter(prefix="/primary/students", tags=["Primary Students"])
 
 # ============================================================
-# 🔥 1. STATIC ROUTE: MY STUDENTS (KWANZA!)
+# 🔥 1. IMPORT TEMPLATE (LAZIMA IWE KWANZA!)
+# ============================================================
+@router.get("/import-template")
+async def download_import_template_primary(
+    current_user = Depends(get_current_user),
+):
+    """✅ Pakua template ya Excel (PRIMARY)"""
+    buffer = create_import_template(level="primary")  # ✅ Inapitisha "primary"
+
+    
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": "attachment; filename=student_import_template_primary.xlsx"
+        }
+    )
+
+# ============================================================
+# 🔥 2. IMPORT EXCEL (LAZIMA IWE KWANZA!)
+# ============================================================
+@router.post("/import-excel")
+async def import_students_excel_primary(
+    school_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """✅ Import wanafunzi wa PRIMARY kutoka Excel"""
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(400, "File lazima iwe Excel (.xlsx au .xls)")
+    
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(400, "File ni kubwa sana (max 10MB)")
+    
+    students_data = parse_excel_students(contents)
+    
+    result = import_students_to_db(
+        students_data=students_data,
+        school_id=school_id,
+        db=db,
+        SchoolClass=SchoolClass,
+        Stream=Stream,
+        Student=Student,
+        level="primary",
+    )
+    
+    return {"success": True, "level": "primary", **result}
+
+# ============================================================
+# 🔥 3. STATIC ROUTE: MY STUDENTS
 # ============================================================
 @router.get("/my-students")
 def get_my_primary_students(
@@ -133,7 +192,6 @@ def get_my_primary_students(
         logger.info(f"get_my_primary_students - Role: {user_role}, ID: {user_id}")
         logger.info(f"Filters - class_id: {class_id}, stream_id: {stream_id}, subject_id: {subject_id}")
         
-        # SUPERADMIN
         if isinstance(current_user, SuperAdmin):
             students = db.query(Student).all()
             result = []
@@ -166,7 +224,6 @@ def get_my_primary_students(
                 })
             return result
         
-        # FOR PRIMARY TEACHERS AND STAFF
         primary_staff_roles = ["Mwalimu", "Mtaaluma", "Mwalimu Mkuu", "Mwalimu Mkuu Msaidizi"]
         
         if user_role in primary_staff_roles or isinstance(current_user, Teacher):
@@ -174,10 +231,8 @@ def get_my_primary_students(
             if not school_id:
                 return []
             
-            # Verify primary school
             verify_primary_school(school_id, db)
             
-            # 🔥 GET ASSIGNMENTS - FILTER BY SUBJECT IF PROVIDED
             query = db.query(TeacherSubject).filter(
                 TeacherSubject.teacher_id == user_id
             )
@@ -193,11 +248,9 @@ def get_my_primary_students(
             result = []
             
             for assignment in assignments:
-                # 🔥 SKIP IKIWA CLASS HAIENDANI NA FILTER
                 if class_id and assignment.class_id != class_id:
                     continue
                 
-                # 🔥 SKIP IKIWA STREAM HAIENDANI NA FILTER
                 if stream_id and assignment.stream_id != stream_id:
                     continue
                 
@@ -250,9 +303,8 @@ def get_my_primary_students(
         traceback.print_exc()
         return []
 
-
 # ============================================================
-# 🔥 2. GET ALL STUDENTS - PRIMARY (IMEBORESHA!)
+# 🔥 4. GET ALL STUDENTS
 # ============================================================
 @router.get("")
 def get_primary_students(
@@ -285,7 +337,6 @@ def get_primary_students(
             detail=f"Huna ruhusa. Jukumu lako: {user_role}."
         )
     
-    # 🔥🔥🔥 BADILISHA HII - JOIN CLASSES NA STREAMS! 🔥🔥🔥
     query = db.query(
         Student.id,
         Student.name,
@@ -301,8 +352,8 @@ def get_primary_students(
         Student.health_info,
         Student.address,
         Student.enrollment_date,
-        SchoolClass.name.label("class_name"),  # 🔥 ONGEZA HII!
-        Stream.name.label("stream_name")       # 🔥 ONGEZA HII!
+        SchoolClass.name.label("class_name"),
+        Stream.name.label("stream_name")
     ).join(
         SchoolClass, Student.class_id == SchoolClass.id, isouter=True
     ).join(
@@ -318,7 +369,6 @@ def get_primary_students(
     
     results = query.all()
     
-    # 🔥🔥🔥 BADILISHA RETURN - JAZA CLASS_NAME NA STREAM_NAME! 🔥🔥🔥
     students = []
     for row in results:
         students.append({
@@ -328,9 +378,9 @@ def get_primary_students(
             "roll_number": row.roll_number,
             "school_id": row.school_id,
             "class_id": row.class_id,
-            "class_name": row.class_name or "-",  # 🔥 IMEJAZWA!
+            "class_name": row.class_name or "-",
             "stream_id": row.stream_id,
-            "stream_name": row.stream_name or "-",  # 🔥 IMEJAZWA!
+            "stream_name": row.stream_name or "-",
             "father_name": row.father_name,
             "father_phone": row.father_phone,
             "mother_name": row.mother_name,
@@ -342,9 +392,8 @@ def get_primary_students(
     
     return students
 
-
 # ============================================================
-# 🔥 3. GET SINGLE STUDENT - PRIMARY (IMEBORESHA!)
+# 🔥 5. GET SINGLE STUDENT
 # ============================================================
 @router.get("/{student_id}")
 def get_primary_student(
@@ -352,9 +401,8 @@ def get_primary_student(
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
-    """Get a single PRIMARY student by ID - WITH class_name and stream_name!"""
+    """Get a single PRIMARY student by ID"""
     
-    # 🔥🔥🔥 BADILISHA HII - JOIN CLASSES NA STREAMS! 🔥🔥🔥
     result = db.query(
         Student.id,
         Student.name,
@@ -385,7 +433,6 @@ def get_primary_student(
     
     verify_primary_school(result.school_id, db)
     
-    # 🔥🔥🔥 RUDISHA DATA KAMILI! 🔥🔥🔥
     return {
         "id": result.id,
         "name": result.name,
@@ -405,9 +452,8 @@ def get_primary_student(
         "enrollment_date": result.enrollment_date
     }
 
-
 # ============================================================
-# 🔥 4. CREATE STUDENT - PRIMARY (IMEBORESHA!)
+# 🔥 6. CREATE STUDENT
 # ============================================================
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_primary_student(
@@ -482,7 +528,6 @@ def create_primary_student(
     
     logger.info(f"✅ Student created: {new_student.name} (ID: {new_student.id}) in school {school_id}")
     
-    # 🔥 RUDISHA KWA CLASS_NAME NA STREAM_NAME
     class_name = None
     stream_name = None
     if new_student.class_id:
@@ -511,9 +556,8 @@ def create_primary_student(
         "enrollment_date": new_student.enrollment_date
     }
 
-
 # ============================================================
-# 🔥 5. UPDATE STUDENT - PRIMARY
+# 🔥 7. UPDATE STUDENT
 # ============================================================
 @router.put("/{student_id}")
 def update_primary_student(
@@ -556,9 +600,8 @@ def update_primary_student(
     
     return {"message": "Student updated successfully", "student": student}
 
-
 # ============================================================
-# 🔥 6. DELETE STUDENT - PRIMARY
+# 🔥 8. DELETE STUDENT
 # ============================================================
 @router.delete("/{student_id}")
 def delete_primary_student(

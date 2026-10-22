@@ -21,9 +21,14 @@ class Student(Base):
     # Gender / Sex
     sex = Column(String(1), nullable=False)  # 'M' au 'F'
 
-    # Guardian Info
-    father_name = Column(String(100), nullable=False)
-    father_phone = Column(String(20), nullable=False)
+    # ============================================================
+    # ✅ GUARDIAN INFO - IMEBORESHWA KWA AJILI YA IMPORT
+    # ============================================================
+    # Tumeondoa "nullable=False" ili mtaaluma aweze ku-import 
+    # majina kwanza, kisha akamilishe taarifa za wazazi baadaye.
+    # ============================================================
+    father_name = Column(String(100), nullable=True)   # ✅ Badilika (Optional)
+    father_phone = Column(String(20), nullable=True)   # ✅ Badilika (Optional)
     mother_name = Column(String(100), nullable=True)
     mother_phone = Column(String(20), nullable=True)
     address = Column(String(255), nullable=True)
@@ -52,11 +57,8 @@ class Student(Base):
     stream = relationship("Stream", back_populates="students")
     
     # ============================================================
-    # 🔥 PARENT RELATIONSHIP (MPYA!)
+    # 🔥 PARENT RELATIONSHIP
     # ============================================================
-    
-    # 🔥 Parents (Wazazi wa mwanafunzi - kupitia ParentChild)
-    # Mwanafunzi anaweza kuwa na wazazi wengi (baba, mama, mlezi)
     parents = relationship("ParentChild", back_populates="student", cascade="all, delete-orphan")
 
     def __repr__(self):

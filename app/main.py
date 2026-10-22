@@ -5,17 +5,40 @@ from fastapi import FastAPI, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from app.api.v1 import students, teachers, schools, ai_exam, superadmin, classes, subjects
-from app.api.v1 import past_papers, marks, reports, streams, academic, promote
+
+# ============================================================
+# ✅ GENERAL ROUTERS
+# ============================================================
+from app.api.v1 import (
+    teachers,
+    schools,
+    ai_exam,
+    superadmin,
+    classes,
+    subjects,
+    past_papers,
+    marks,
+    reports,
+    streams,
+    academic,
+    promote,
+)
+
+# ✅ SECONDARY STUDENTS ROUTES (file ya awali)
+from app.api.v1 import students_routes  # ✅ Hii inachukua file!
+
+# ✅ PRIMARY DASHBOARD
 from app.api.v1.secondary import dashboard as secondary_dashboard
 from app.api.v1.primary import dashboard as primary_dashboard
 
-# 🔥 PRIMARY API IMPORTS
+# ============================================================
+# ✅ PRIMARY API IMPORTS
+# ============================================================
 from app.api.v1.primary.reports import top_students as primary_top_students
 from app.api.v1.primary.academic import unassigned_slots as primary_unassigned_slots
 from app.api.v1.primary import classes as primary_classes
 from app.api.v1.primary import streams as primary_streams
-from app.api.v1.primary import students as primary_students
+from app.api.v1.primary import students_routes as primary_students_routes
 from app.api.v1.primary import teachers as primary_teachers
 from app.api.v1.primary import subjects as primary_subjects
 from app.api.v1.primary import promote as primary_promote
@@ -23,12 +46,21 @@ from app.api.v1.primary import marks as primary_marks
 from app.api.v1.primary import past_papers as primary_past_papers
 from app.api.v1.primary import ai_exam as primary_ai_exam
 
-# 🔥 PARENTS API
-from app.api.v1 import parents as parents_router
+# ============================================================
+# ✅ EXCEL STUDENT IMPORT (PRIMARY & SECONDARY)
+# ============================================================
+from app.api.v1.students import student_import as secondary_students_import
+from app.api.v1.primary.students import student_import as primary_students_import
 
-# 🔥 SCHOOL ANNOUNCEMENTS API
+# ============================================================
+# ✅ PARENTS & SCHOOL ANNOUNCEMENTS
+# ============================================================
+from app.api.v1 import parents as parents_router
 from app.api.v1 import school_announcements as school_announcements_router
 
+# ============================================================
+# ✅ IMPORTS ZA SQLALCHEMY & LOGGING
+# ============================================================
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -78,7 +110,6 @@ app = FastAPI(
 # 🔥🔥🔥 CORS MIDDLEWARE 🔥🔥🔥
 # ============================================================
 
-# 🔥 Domain zote zinazoruhusiwa
 ALLOWED_ORIGINS_DEFAULT = (
     "http://localhost:3000,"
     "http://localhost:8000,"
@@ -88,8 +119,6 @@ ALLOWED_ORIGINS_DEFAULT = (
 )
 
 ALLOWED_ORIGINS_STR = os.getenv("ALLOWED_ORIGINS", ALLOWED_ORIGINS_DEFAULT)
-
-# 🔥 Split and clean
 ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_STR.split(",") if origin.strip()]
 
 logger.info(f"🔧 CORS Allowed Origins: {ALLOWED_ORIGINS}")
@@ -122,15 +151,12 @@ app.add_middleware(
 uploads_dir = Path("uploads")
 uploads_dir.mkdir(exist_ok=True)
 
-# 🔥 Primary Past Papers
 primary_past_papers_dir = Path("uploads/primary/past_papers")
 primary_past_papers_dir.mkdir(parents=True, exist_ok=True)
 
-# 🔥 Secondary Past Papers
 past_papers_dir = Path("uploads/past_papers")
 past_papers_dir.mkdir(parents=True, exist_ok=True)
 
-# 🔥 Mount static files
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 logger.info("📁 Upload directories created successfully")
@@ -147,7 +173,9 @@ def get_redis():
 # ============================================================
 
 # ------ GENERAL ROUTERS ------
-app.include_router(students.router, prefix="/api/v1", tags=["Students"])
+# ✅ Tumia `students_routes` (file la awali la students)
+app.include_router(students_routes.router, prefix="/api/v1", tags=["Students"])
+
 app.include_router(teachers.router, prefix="/api/v1", tags=["Teachers"])
 app.include_router(schools.router, prefix="/api/v1", tags=["Schools"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
@@ -171,19 +199,25 @@ app.include_router(school_announcements_router.router, prefix="/api/v1", tags=["
 # ------ SECONDARY ROUTERS ------
 app.include_router(secondary_dashboard.router, prefix="/api/v1/secondary", tags=["Secondary Dashboard"])
 
+# ✅ NEW: Secondary Excel Import
+app.include_router(secondary_students_import.router, prefix="/api/v1", tags=["Students - Import (Secondary)"])
+
 # ------ PRIMARY ROUTERS ------
 app.include_router(primary_dashboard.router, prefix="/api/v1", tags=["Primary Dashboard"])
 app.include_router(primary_top_students.router, prefix="/api/v1", tags=["Primary Reports"])
 app.include_router(primary_unassigned_slots.router, prefix="/api/v1", tags=["Primary Academic"])
 app.include_router(primary_classes.router, prefix="/api/v1", tags=["Primary Classes"])
 app.include_router(primary_streams.router, prefix="/api/v1", tags=["Primary Streams"])
-app.include_router(primary_students.router, prefix="/api/v1", tags=["Primary Students"])
+app.include_router(primary_students_routes.router, prefix="/api/v1", tags=["Primary Students"])
 app.include_router(primary_teachers.router, prefix="/api/v1", tags=["Primary Teachers"])
 app.include_router(primary_subjects.router, prefix="/api/v1", tags=["Primary Subjects"])
 app.include_router(primary_promote.router, prefix="/api/v1", tags=["Primary Promote"])
 app.include_router(primary_marks.router, prefix="/api/v1", tags=["Primary Marks"])
 app.include_router(primary_past_papers.router, prefix="/api/v1", tags=["Primary Past Papers"])
 app.include_router(primary_ai_exam.router, prefix="/api/v1", tags=["Primary AI Exam"])
+
+# ✅ NEW: Primary Excel Import
+app.include_router(primary_students_import.router, prefix="/api/v1", tags=["Students - Import (Primary)"])
 
 logger.info("✅ All routers registered successfully")
 
